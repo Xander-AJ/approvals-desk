@@ -1,0 +1,22 @@
+# Deliberate, documented exceptions. Everything else checkov flags should be fixed, not added here.
+framework: [terraform]
+compact: true
+quiet: true
+skip-check:
+  # Encryption is ON everywhere with AWS-managed keys; these ask for customer-managed KMS keys (CMKs).
+  # Adopt CMKs if policy/compliance requires key-level access control or rotation control.
+  - CKV_AWS_149  # Secrets Manager secrets: CMK
+  - CKV_AWS_158  # CloudWatch log groups: CMK
+  - CKV_AWS_191  # ElastiCache: CMK
+  - CKV_AWS_354  # RDS Performance Insights: CMK
+  # Secret rotation needs a rotation Lambda per secret (DB users also need coordinated app restarts).
+  - CKV2_AWS_57
+  # Public ALB extras that need additional resources/decisions (WAF rule sets, an access-log bucket).
+  - CKV2_AWS_28  # WAF
+  - CKV_AWS_91   # ALB access logs
+  # Port 80 is open only to answer with a 301 to HTTPS (see aws_lb_listener.http).
+  - CKV_AWS_260
+  # Statement logging can capture sensitive values; enable deliberately per environment.
+  - CKV2_AWS_30
+  # AZ data source: we take the first two available zones by design.
+  - CKV_AWS_394

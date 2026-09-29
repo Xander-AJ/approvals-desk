@@ -2,11 +2,13 @@ resource "aws_ecr_repository" "api" {
   name                 = "${var.name}/api"
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
+  encryption_configuration { encryption_type = "KMS" } # AWS-managed key; use a CMK if policy requires
 }
 resource "aws_ecr_repository" "sandbox" {
   name                 = "${var.name}/sandbox"
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
+  encryption_configuration { encryption_type = "KMS" } # AWS-managed key; use a CMK if policy requires
 }
 
 resource "aws_ecs_cluster" "main" {
@@ -19,7 +21,7 @@ resource "aws_ecs_cluster" "main" {
 
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.name}"
-  retention_in_days = 30
+  retention_in_days = 365
 }
 
 data "aws_iam_policy_document" "ecs_assume" {
@@ -56,7 +58,6 @@ locals {
   secret_arn = { for k, s in aws_secretsmanager_secret.app : k => s.arn }
 
   common_env = [
-    { name = "AD_REDIS_URL", value = local.redis_url },
     { name = "AD_SANDBOX_URL", value = "http://sandbox.${var.name}.local:8001" },
     { name = "AD_JWT_ISSUER", value = var.jwt_issuer },
     { name = "AD_JWT_JWKS_URL", value = var.jwt_jwks_url },
@@ -68,6 +69,7 @@ locals {
   ]
   common_secrets = [
     { name = "AD_DATABASE_URL", valueFrom = local.secret_arn["database_url"] },
+    { name = "AD_REDIS_URL", valueFrom = local.secret_arn["redis_url"] },
     { name = "AD_CHECKPOINT_DSN", valueFrom = local.secret_arn["checkpoint_dsn"] },
     { name = "AD_WEBHOOK_SECRET", valueFrom = local.secret_arn["webhook_secret"] },
     { name = "AD_SANDBOX_API_KEY", valueFrom = local.secret_arn["sandbox_api_key"] },
@@ -76,7 +78,10 @@ locals {
 }
 
 resource "aws_ecs_task_definition" "api" {
-  family                   = "${var.name}-api"
+  family = "${var.name}-api"
+  volume {
+    name = "tmp"
+  }
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 512
@@ -84,19 +89,24 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name         = "api"
-    image        = var.api_image
-    essential    = true
-    portMappings = [{ containerPort = 8000 }]
-    environment  = concat(local.common_env, [{ name = "OTEL_SERVICE_NAME", value = "approvals-api" }])
-    secrets      = local.common_secrets
+    name                   = "api"
+    image                  = var.api_image
+    essential              = true
+    readonlyRootFilesystem = true
+    mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]
+    portMappings           = [{ containerPort = 8000 }]
+    environment            = concat(local.common_env, [{ name = "OTEL_SERVICE_NAME", value = "approvals-api" }])
+    secrets                = local.common_secrets
     logConfiguration = { logDriver = "awslogs", options = {
     awslogs-group = aws_cloudwatch_log_group.app.name, awslogs-region = var.region, awslogs-stream-prefix = "api" } }
   }])
 }
 
 resource "aws_ecs_task_definition" "worker" {
-  family                   = "${var.name}-worker"
+  family = "${var.name}-worker"
+  volume {
+    name = "tmp"
+  }
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 512
@@ -104,12 +114,14 @@ resource "aws_ecs_task_definition" "worker" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name        = "worker"
-    image       = var.api_image
-    essential   = true
-    command     = ["arq", "app.worker.WorkerSettings"]
-    environment = concat(local.common_env, [{ name = "OTEL_SERVICE_NAME", value = "approvals-worker" }])
-    secrets     = local.common_secrets
+    name                   = "worker"
+    image                  = var.api_image
+    essential              = true
+    readonlyRootFilesystem = true
+    mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]
+    command                = ["arq", "app.worker.WorkerSettings"]
+    environment            = concat(local.common_env, [{ name = "OTEL_SERVICE_NAME", value = "approvals-worker" }])
+    secrets                = local.common_secrets
     logConfiguration = { logDriver = "awslogs", options = {
     awslogs-group = aws_cloudwatch_log_group.app.name, awslogs-region = var.region, awslogs-stream-prefix = "worker" } }
   }])
@@ -117,7 +129,10 @@ resource "aws_ecs_task_definition" "worker" {
 
 # One-off: `aws ecs run-task --task-definition approvals-desk-migrate ...` before each deploy.
 resource "aws_ecs_task_definition" "migrate" {
-  family                   = "${var.name}-migrate"
+  family = "${var.name}-migrate"
+  volume {
+    name = "tmp"
+  }
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -125,10 +140,12 @@ resource "aws_ecs_task_definition" "migrate" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name      = "migrate"
-    image     = var.api_image
-    essential = true
-    command   = ["alembic", "upgrade", "head"]
+    name                   = "migrate"
+    image                  = var.api_image
+    essential              = true
+    readonlyRootFilesystem = true
+    mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]
+    command                = ["alembic", "upgrade", "head"]
     secrets = [
       { name = "MIGRATION_DATABASE_URL", valueFrom = local.secret_arn["migration_url"] },
       { name = "APP_DB_PASSWORD", valueFrom = local.secret_arn["app_db_password"] },
@@ -139,7 +156,10 @@ resource "aws_ecs_task_definition" "migrate" {
 }
 
 resource "aws_ecs_task_definition" "sandbox" {
-  family                   = "${var.name}-sandbox"
+  family = "${var.name}-sandbox"
+  volume {
+    name = "tmp"
+  }
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -147,11 +167,13 @@ resource "aws_ecs_task_definition" "sandbox" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name         = "sandbox"
-    image        = var.sandbox_image
-    essential    = true
-    portMappings = [{ containerPort = 8001 }]
-    environment  = [{ name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otlp_endpoint }]
+    name                   = "sandbox"
+    image                  = var.sandbox_image
+    essential              = true
+    readonlyRootFilesystem = true
+    mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]
+    portMappings           = [{ containerPort = 8001 }]
+    environment            = [{ name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otlp_endpoint }]
     secrets = [
       { name = "SANDBOX_DATABASE_URL", valueFrom = local.secret_arn["sandbox_database_url"] },
       { name = "SANDBOX_API_KEY", valueFrom = local.secret_arn["sandbox_api_key"] },
@@ -182,6 +204,9 @@ resource "aws_lb" "api" {
   load_balancer_type = "application"
   subnets            = aws_subnet.public[*].id
   security_groups    = [aws_security_group.alb.id]
+
+  drop_invalid_header_fields = true
+  enable_deletion_protection = true
 }
 resource "aws_lb_target_group" "api" {
   name        = "${var.name}-api"
@@ -196,20 +221,15 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
   default_action {
-    type             = var.certificate_arn == "" ? "forward" : "redirect"
-    target_group_arn = var.certificate_arn == "" ? aws_lb_target_group.api.arn : null
-    dynamic "redirect" {
-      for_each = var.certificate_arn == "" ? [] : [1]
-      content {
-        port        = "443"
-        protocol    = "HTTPS"
-        status_code = "HTTP_301"
-      }
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
     }
   }
 }
 resource "aws_lb_listener" "https" {
-  count             = var.certificate_arn == "" ? 0 : 1
   load_balancer_arn = aws_lb.api.arn
   port              = 443
   protocol          = "HTTPS"
@@ -236,7 +256,7 @@ resource "aws_ecs_service" "api" {
     container_name   = "api"
     container_port   = 8000
   }
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener.https]
 }
 
 resource "aws_ecs_service" "worker" {

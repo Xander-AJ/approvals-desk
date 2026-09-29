@@ -19,10 +19,14 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       SANDBOX_API_KEY: compose-dev-sandbox-key-0123456789
     depends_on: { postgres: { condition: service_healthy } }
+    read_only: true   # mirrors readonlyRootFilesystem on ECS; /tmp is the only writable path
+    tmpfs: [/tmp]
     ports: ["8001:8001"]
   migrate:
     build: { context: ., dockerfile: backend/Dockerfile }
     command: ["alembic", "upgrade", "head"]
+    read_only: true
+    tmpfs: [/tmp]
     environment:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/approvals
     depends_on: { postgres: { condition: service_healthy } }
@@ -40,6 +44,8 @@ services:
       AD_DEV_AUTH: "true"
       AD_JWT_SECRET: compose-dev-only-secret-0123456789-abcdef
       AD_ASYNC_RESUME: "true"
+    read_only: true
+    tmpfs: [/tmp]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_started }

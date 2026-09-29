@@ -4,7 +4,9 @@ terraform {
     aws    = { source = "hashicorp/aws", version = "~> 5.70" }
     random = { source = "hashicorp/random", version = "~> 3.6" }
   }
-  # Configure a remote backend (S3 + DynamoDB lock) per environment before `apply`.
+  # Partial config: terraform init -backend-config="bucket=..." -backend-config="key=approvals-desk/terraform.tfstate" \
+  #   -backend-config="region=..." -backend-config="dynamodb_table=..." -backend-config="encrypt=true"
+  backend "s3" {}
 }
 
 provider "aws" {
@@ -49,8 +51,16 @@ variable "jwt_jwks_url" {
 }
 variable "certificate_arn" {
   type        = string
-  default     = ""
-  description = "ACM certificate for HTTPS. Empty = HTTP only (not for production)."
+  description = "ACM certificate for the ALB HTTPS listener. Required: there is no HTTP-only mode."
+}
+variable "nat_gateway_count" {
+  type        = number
+  default     = 2
+  description = "1 saves cost; 2 (one per AZ) survives an AZ outage."
+  validation {
+    condition     = contains([1, 2], var.nat_gateway_count)
+    error_message = "nat_gateway_count must be 1 or 2."
+  }
 }
 variable "otlp_endpoint" {
   type        = string

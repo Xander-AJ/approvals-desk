@@ -6,32 +6,68 @@ resource "random_password" "app_user" {
   length  = 32
   special = false
 }
+resource "random_password" "redis_token" {
+  length  = 40
+  special = false # ElastiCache auth tokens restrict punctuation
+}
+resource "random_password" "sandbox_key" {
+  length  = 40
+  special = false
+}
+resource "random_password" "webhook" {
+  length  = 40
+  special = false
+}
 
 resource "aws_db_subnet_group" "main" {
   name       = var.name
   subnet_ids = aws_subnet.private[*].id
 }
 
+data "aws_iam_policy_document" "rds_monitoring_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["monitoring.rds.amazonaws.com"]
+    }
+  }
+}
+resource "aws_iam_role" "rds_monitoring" {
+  name               = "${var.name}-rds-monitoring"
+  assume_role_policy = data.aws_iam_policy_document.rds_monitoring_assume.json
+}
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  role       = aws_iam_role.rds_monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 resource "aws_db_instance" "main" {
-  identifier                 = var.name
-  engine                     = "postgres"
-  engine_version             = "16"
-  instance_class             = var.db_instance_class
-  allocated_storage          = 20
-  max_allocated_storage      = 100
-  storage_encrypted          = true
-  db_name                    = "approvals"
-  username                   = "owner"
-  password                   = random_password.db_owner.result
-  db_subnet_group_name       = aws_db_subnet_group.main.name
-  vpc_security_group_ids     = [aws_security_group.data.id]
-  multi_az                   = true
-  backup_retention_period    = 7
-  deletion_protection        = true
-  skip_final_snapshot        = false
-  final_snapshot_identifier  = "${var.name}-final"
-  auto_minor_version_upgrade = true
-  publicly_accessible        = false
+  identifier                          = var.name
+  engine                              = "postgres"
+  engine_version                      = "16"
+  instance_class                      = var.db_instance_class
+  allocated_storage                   = 20
+  max_allocated_storage               = 100
+  storage_encrypted                   = true
+  db_name                             = "approvals"
+  username                            = "owner"
+  password                            = random_password.db_owner.result
+  db_subnet_group_name                = aws_db_subnet_group.main.name
+  vpc_security_group_ids              = [aws_security_group.data.id]
+  multi_az                            = true
+  backup_retention_period             = 7
+  deletion_protection                 = true
+  skip_final_snapshot                 = false
+  final_snapshot_identifier           = "${var.name}-final"
+  auto_minor_version_upgrade          = true
+  publicly_accessible                 = false
+  copy_tags_to_snapshot               = true
+  iam_database_authentication_enabled = true
+  performance_insights_enabled        = true
+  monitoring_interval                 = 60
+  monitoring_role_arn                 = aws_iam_role.rds_monitoring.arn
+  enabled_cloudwatch_logs_exports     = ["postgresql", "upgrade"]
 }
 
 resource "aws_elasticache_subnet_group" "main" {
@@ -44,11 +80,14 @@ resource "aws_elasticache_replication_group" "redis" {
   description                = "arq job queue"
   engine                     = "redis"
   node_type                  = "cache.t4g.small"
-  num_cache_clusters         = 1
+  num_cache_clusters         = 2
+  automatic_failover_enabled = true
+  multi_az_enabled           = true
   subnet_group_name          = aws_elasticache_subnet_group.main.name
   security_group_ids         = [aws_security_group.data.id]
   at_rest_encryption_enabled = true
-  transit_encryption_enabled = false # arq's redis DSN below is plain; enable + rediss:// for production
+  transit_encryption_enabled = true
+  auth_token                 = random_password.redis_token.result
 }
 
 locals {
@@ -64,18 +103,8 @@ locals {
     webhook_secret       = random_password.webhook.result
     sandbox_api_key      = random_password.sandbox_key.result
     anthropic_api_key    = var.anthropic_api_key == "" ? "unset" : var.anthropic_api_key
+    redis_url            = "rediss://:${random_password.redis_token.result}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
   }
-  redis_url = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
-}
-
-resource "random_password" "sandbox_key" {
-  length  = 40
-  special = false
-}
-
-resource "random_password" "webhook" {
-  length  = 40
-  special = false
 }
 
 resource "aws_secretsmanager_secret" "app" {
