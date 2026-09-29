@@ -1,4 +1,5 @@
 "use client";
+import { signOut as authSignOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { setSession } from "@/lib/api";
@@ -20,7 +21,7 @@ export function Nav() {
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
         <span className="font-semibold">approvals-desk</span>
         <nav className="flex gap-4 text-sm">
-          {LINKS.map((l) => (
+          {[...LINKS, ...(s?.role === "admin" ? [{ href: "/integrations", label: "Integrations" }] : [])].map((l) => (
             <Link key={l.href} href={l.href} className={path === l.href ? "font-semibold" : "text-zinc-600 hover:text-zinc-900"}>
               {l.label}
             </Link>
@@ -34,8 +35,11 @@ export function Nav() {
               </span>
               <button
                 className="underline"
-                onClick={() => {
+                onClick={async () => {
+                  const oidc = s.auth === "oidc";
                   setSession(null);
+                  // End the GitHub-backed Auth.js session too, or the cookie would sign the same browser straight back in.
+                  if (oidc) await authSignOut({ redirect: false });
                   router.push("/login");
                 }}
               >
