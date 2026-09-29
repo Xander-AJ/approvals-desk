@@ -1,0 +1,100 @@
+# approvals-desk
+
+A durable, multi-tenant human-in-the-loop console for agent-proposed money movements (refunds, reversals, fee
+waivers). A support agent (LLM) **proposes**; policy or a human **decides**; exactly one side effect executes.
+
+The hard parts are the point: exactly-once execution, an enforced approval state machine, tenant isolation in the
+database, an append-only audit trail, and runs that survive process kills.
+
+```
+customer msg ─▶ API ─▶ LangGraph run ─ classify ─▶ retrieve ctx ─▶ draft proposal ─▶ policy check
+                                                                                        │
+                       ┌── auto-approve ────────────────────────────────────────────────┤
+                       │                              review ─▶ interrupt() (checkpoint in Postgres)
+                       │                                          │  human approve / edit / reject
+                       ▼                                          ▼
+              execute_action  ◀── resume job (arq, Redis) ── API commits state transition first
+   (ONE side effect, Idempotency-Key = sha256(thread:proposal:version))
+                       │
+                       ▼
+                 compose reply        every transition ─▶ audit_events (append-only) + outbox ─▶ signed webhooks
+```
+
+## Run it
+
+```bash
+docker compose up -d --build          # postgres, redis, jaeger, sandbox, migrate, api, worker
+docker compose exec api python -m app.seed
+cd web && npm ci && API_URL=http://localhost:8000 npm run dev    # http://localhost:3000
+```
+
+Sign in at `/login` (dev issuer, enabled only by `AD_DEV_AUTH=true`): pick a tenant and a role
+(`agent` creates tickets, `reviewer` decides, `admin` edits policy).
+Jaeger: http://localhost:16686 · Sandbox ledger: http://localhost:8001/ledger
+
+## 60-second demo
+
+1. **/chat** as *agent*: send `nimekatwa mara mbili KES 1,200 Java House` (Sheng-flavoured "I was charged twice").
+   The agent drafts a KES 1,200 refund citing both ledger charges; it lands in the inbox as *pending review*.
+2. Kill the worker live: `docker compose kill worker`.
+3. **Inbox** as *reviewer*: open the proposal, click **Approve**. The state becomes `approved` but nothing has
+   executed: `curl localhost:8001/ledger` still shows no new refund.
+4. `docker compose start worker`. The queued resume job runs; the proposal becomes `executed`.
+   The ledger shows **exactly one** refund.
+5. Open the proposal's **audit timeline** and follow a `trace ↗` link: one Jaeger trace spans
+   `approvals-api → approvals-worker → pesa-sandbox`.
+
+Harder version (also verified): `docker compose pause sandbox`, approve, `docker compose kill worker`,
+`docker compose unpause sandbox`, `docker compose start worker`. The killed worker's in-flight refund still lands,
+the restarted worker replays it with the same idempotency key, and the ledger still has one entry.
+
+## What is guaranteed, and where it is proven
+
+| Property | Mechanism | Proof |
+|---|---|---|
+| Exactly-once side effect | Own graph node + idempotency key; sandbox stores key → result | `tests/integration/test_chaos.py` (kill after the sandbox accepted the refund, before it was recorded), the compose demo above |
+| Legal transitions only | Table-driven state machine in one module; invalid → HTTP 409 | Hypothesis stateful test; concurrent-approval test (4 requests → 1×200, 3×409, 1 refund) |
+| Tenant isolation | Postgres RLS (`ENABLE`+`FORCE`), runtime role `NOBYPASSRLS`, fail-closed when unset | `test_rls.py` on real Postgres: cross-tenant read/write blocked |
+| Auditability | `audit_events` append-only (revoked + trigger), before/after + `trace_id`, same txn as the change | RLS test; API flow asserts event order |
+| At-least-once webhooks | Transactional outbox, `SKIP LOCKED`, HMAC signature, `X-Event-Id` for dedupe | `test_worker_and_concurrency.py` |
+| SLA expiry | Worker expires stale `pending_review`, never executes, late approve → 409 | same file |
+| Durable resume | LangGraph Postgres checkpointer + worker startup recovery | chaos test, compose demo |
+| RBAC + JWT | agent / reviewer / admin; JWTs require `exp`; RS256 via JWKS in prod | `tests/unit/test_auth.py`, Playwright role tests |
+
+Replay semantics (what re-runs on resume) are documented in `docs/adr/0001` and `0003`.
+
+## Tests, evals, CI
+
+```bash
+cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 39 tests, testcontainers
+cd backend && uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5 --mode replay
+cd sandbox && uv run pytest -q
+cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the compose stack up + seeded
+```
+
+- **Evals** (`backend/evals`, `evals/README.md`): 60 labelled tickets (English/Swahili/Sheng) scored on the
+  *proposal* (action, amount, decision), not the reply. Gates: accuracy, **policy violations = 0**, unnecessary
+  escalations. CI replays recorded Claude Haiku 4.5 outputs, so it needs no key and costs nothing.
+  **Caveat:** labels and prompt were written and tuned by the same author with no held-out set; treat the score as
+  optimistic.
+- **CI** (`.github/workflows/ci.yml`): ruff, mypy --strict, pytest, evals, eslint, tsc, build, Playwright against
+  the compose stack, Docker builds, Trivy (HIGH/CRITICAL). Not yet run on GitHub: it has only been exercised locally.
+
+## Infrastructure
+
+`infra/` is Terraform for AWS: VPC, RDS Postgres 16 (Multi-AZ, encrypted), ElastiCache Redis, ECS Fargate
+(api behind an ALB, worker, sandbox via Cloud Map), ECR, Secrets Manager. `terraform validate` passes;
+**it has never been planned or applied** (no AWS account was used). Run the `migrate` task definition before each
+deploy. The frontend is meant for Vercel with `API_URL` pointing at the ALB.
+
+Known production gaps: Redis in-transit encryption is off; one NAT gateway; the Pesa Sandbox is a fake
+(no auth) and shares the RDS instance; no remote Terraform backend is configured.
+
+## Decisions
+
+`docs/adr/`: checkpointer vs Temporal, RLS vs schema-per-tenant, single-side-effect execute node, outbox and arq.
+
+## Scope
+
+One channel (chat simulator), three action types, one LLM provider. Not built: WhatsApp/Slack channel adapters
+(the outbox webhook is the integration point), compensation flow for `compensated`, a real payments provider.
