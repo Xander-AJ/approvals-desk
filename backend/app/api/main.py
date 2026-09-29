@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from opentelemetry import propagate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -26,13 +26,17 @@ Admin = Annotated[Principal, Depends(require("admin"))]
 Any_ = Annotated[Principal, Depends(require("agent", "reviewer", "admin"))]
 
 
+Money = Annotated[Decimal, Field(max_digits=12, decimal_places=2)]
+
+
 class TicketIn(BaseModel):
-    customer_ref: str
+    # Becomes a sandbox account id inside a URL path: no slashes, no leading dot ("..").
+    customer_ref: str = Field(pattern=r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
     message: str = Field(min_length=1, max_length=2000)
 
 
 class EditIn(BaseModel):
-    amount: Decimal = Field(gt=0)
+    amount: Money = Field(gt=0)
     reason: str | None = None
 
 
@@ -48,11 +52,17 @@ class DevTokenIn(BaseModel):
 
 
 class PolicyIn(BaseModel):
-    auto_approve_max: Decimal = Field(ge=0)
-    hard_limit: Decimal = Field(gt=0)
+    auto_approve_max: Money = Field(ge=0)
+    hard_limit: Money = Field(gt=0)
     max_auto_risk: int = Field(ge=0, le=100)
-    allowed_actions: list[str]
-    sla_minutes: int = Field(gt=0)
+    allowed_actions: list[Literal["refund", "reversal", "fee_waiver"]]
+    sla_minutes: int = Field(gt=0, le=60 * 24 * 30)
+
+    @model_validator(mode="after")
+    def _auto_below_hard_limit(self) -> PolicyIn:
+        if self.auto_approve_max > self.hard_limit:
+            raise ValueError("auto_approve_max must not exceed hard_limit")
+        return self
 
 
 def create_app(settings: Settings, rt: Runtime, queue: Any = None) -> FastAPI:
@@ -104,8 +114,8 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None) -> FastAPI:
 
     @app.get("/proposals")
     async def list_proposals(p: Any_, state: str | None = None, action_type: str | None = None,
-                             limit: int = 100) -> list[dict[str, Any]]:
-        q = select(Proposal).order_by(Proposal.created_at.desc()).limit(min(limit, 500))
+                             limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[dict[str, Any]]:
+        q = select(Proposal).order_by(Proposal.created_at.desc()).limit(limit)
         if state:
             q = q.where(Proposal.state == state)
         if action_type:

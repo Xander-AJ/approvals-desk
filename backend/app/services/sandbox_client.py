@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -13,7 +14,7 @@ class HttpSandbox:
         self.c = client
 
     async def get_context(self, account_id: str) -> dict[str, Any]:
-        r = await self.c.get(f"/accounts/{account_id}/transactions")
+        r = await self.c.get(f"/accounts/{quote(account_id, safe='')}/transactions")
         r.raise_for_status()
         return {"account_id": account_id, "transactions": r.json()}
 
