@@ -62,6 +62,7 @@ locals {
     { name = "AD_JWT_ISSUER", value = var.jwt_issuer },
     { name = "AD_JWT_JWKS_URL", value = var.jwt_jwks_url },
     { name = "AD_DEV_AUTH", value = "false" },
+    { name = "AD_CONSOLE_URL", value = var.console_url },
     { name = "AD_LLM_PROVIDER", value = var.llm_provider },
     { name = "AD_ASYNC_RESUME", value = "true" },
     { name = "AD_WEBHOOK_URL", value = var.webhook_url },
@@ -74,6 +75,7 @@ locals {
     { name = "AD_WEBHOOK_SECRET", valueFrom = local.secret_arn["webhook_secret"] },
     { name = "AD_SANDBOX_API_KEY", valueFrom = local.secret_arn["sandbox_api_key"] },
     { name = "ANTHROPIC_API_KEY", valueFrom = local.secret_arn["anthropic_api_key"] },
+    { name = "AD_SLACK_SIGNING_SECRET", valueFrom = local.secret_arn["slack_signing_secret"] },
   ]
 }
 

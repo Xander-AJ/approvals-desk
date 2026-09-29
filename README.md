@@ -61,13 +61,16 @@ the restarted worker replays it with the same idempotency key, and the ledger st
 | SLA expiry | Worker expires stale `pending_review`, never executes, late approve → 409 | same file |
 | Durable resume | LangGraph Postgres checkpointer + worker startup recovery | chaos test, compose demo |
 | RBAC + JWT | agent / reviewer / admin; JWTs require `exp`; RS256 via JWKS in prod | `tests/unit/test_auth.py`, Playwright role tests |
+| Slack approvals are not a back door | Signed requests (5-min window), Slack user must be mapped to a role, same domain path as the console, escaped text, Slack-only URLs | `test_slack.py`, `test_slack.py` unit (Slack's own signature vector), Playwright signed-click test against the live stack |
+| Compensation happens once | Deterministic idempotency key, provider call outside the DB txn, provider refuses a second undo of the same transaction | `test_worker_and_concurrency.py` (lost response then retry, 4-way concurrency), sandbox tests, Playwright |
+| Migrations match the models | `alembic upgrade head` on a fresh cluster: schema, forced RLS on every tenant table, audit trigger, role, downgrade round trip | `test_migrations.py` |
 
 Replay semantics (what re-runs on resume) are documented in `docs/adr/0001` and `0003`.
 
 ## Tests, evals, CI
 
 ```bash
-cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 78 tests, testcontainers
+cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 150 tests, testcontainers
 cd backend && uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5 --mode replay
 cd sandbox && uv run pytest -q
 cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the compose stack up + seeded
@@ -80,7 +83,8 @@ cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the 
   trusted the model's risk score; auto-approval is now decided by code (`docs/adr/0005`). Post-fix 0.862 / 0.0 is not
   an unbiased estimate.
 - **CI** (`.github/workflows/ci.yml`): ruff, mypy --strict, pytest, evals, eslint, tsc, build, Playwright against
-  the compose stack, Docker builds, Trivy (HIGH/CRITICAL). Not yet run on GitHub: it has only been exercised locally.
+  the compose stack, Docker builds, Trivy (HIGH/CRITICAL). All six jobs pass on GitHub-hosted runners (the first run
+  caught a nonexistent Trivy action tag and, earlier, a `tsc` failure that only appeared on a clean checkout).
 
 ## Infrastructure
 
@@ -89,14 +93,33 @@ cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the 
 **it has never been planned or applied** (no AWS account was used). Run the `migrate` task definition before each
 deploy. The frontend is meant for Vercel with `API_URL` pointing at the ALB.
 
-Known production gaps: Redis in-transit encryption is off; one NAT gateway; the Pesa Sandbox is a fake
-(shared-key auth only) and shares the RDS instance; no remote Terraform backend is configured.
+A checkov pass is clean apart from documented exceptions in `infra/.checkov.yaml` (customer-managed KMS keys, secret
+rotation, WAF, ALB access logs). HTTPS is mandatory (`certificate_arn` is required), Redis uses TLS with an auth token,
+and there is one NAT per AZ by default. Known gaps: the Pesa Sandbox is a fake (shared-key auth only) and shares the RDS
+instance; the S3 state backend is declared but you must supply its `-backend-config`.
 
 ## Decisions
 
-`docs/adr/`: checkpointer vs Temporal, RLS vs schema-per-tenant, single-side-effect execute node, outbox and arq.
+`docs/adr/`: checkpointer vs Temporal, RLS vs schema-per-tenant, single-side-effect execute node, outbox and arq,
+auto-approval decided by code, Slack approvals and compensation.
+
+## Slack setup
+
+1. Create a Slack app with an **Incoming Webhook** (pick the channel) and **Interactivity** enabled; set the
+   Interactivity Request URL to `https://<api-host>/integrations/slack/interactions`.
+2. Give the API the app's signing secret: `AD_SLACK_SIGNING_SECRET` (Terraform: `slack_signing_secret`) and
+   `AD_CONSOLE_URL` for the "Open / edit" link. Without the secret the endpoint answers 503 and messages still post.
+3. In the console, **Integrations** (admin): paste the webhook URL, send a test message, then map each Slack user id
+   that may decide (reviewer or admin). Unmapped users' clicks are refused and audited.
+
+Edits stay in the console (the message links there). The approve button asks for confirmation.
+
+## Compensation
+
+An admin can undo an `executed` payout from the proposal page (reason required, once only, audited): the customer is
+debited again through the provider's idempotent compensation endpoint, and the proposal becomes `compensated`.
 
 ## Scope
 
-One channel (chat simulator), three action types, one LLM provider. Not built: WhatsApp/Slack channel adapters
-(the outbox webhook is the integration point), compensation flow for `compensated`, a real payments provider.
+One channel (chat simulator) plus Slack approvals, three action types, one LLM provider. Not built: a WhatsApp
+channel, email approvals, reconciliation against a provider ledger, a real payments provider (Pesa Sandbox is a fake).

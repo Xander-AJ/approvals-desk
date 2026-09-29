@@ -103,6 +103,7 @@ locals {
     webhook_secret       = random_password.webhook.result
     sandbox_api_key      = random_password.sandbox_key.result
     anthropic_api_key    = var.anthropic_api_key == "" ? "unset" : var.anthropic_api_key
+    slack_signing_secret = var.slack_signing_secret == "" ? "unset" : var.slack_signing_secret
     redis_url            = "rediss://:${random_password.redis_token.result}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
   }
 }

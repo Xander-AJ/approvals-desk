@@ -44,6 +44,16 @@ variable "anthropic_api_key" {
   sensitive = true
   default   = ""
 }
+variable "slack_signing_secret" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Slack app signing secret. Empty disables /integrations/slack/interactions (it answers 503)."
+}
+variable "console_url" {
+  type        = string
+  description = "Public URL of the web console, used for 'Open / edit' links in Slack messages."
+}
 variable "jwt_issuer" { type = string }
 variable "jwt_jwks_url" {
   type        = string
