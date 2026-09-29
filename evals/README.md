@@ -15,5 +15,13 @@ includes the model id, so replay must use the same `--model`.)
 
 Metrics: proposal accuracy, policy-violation rate (must be 0), unnecessary-escalation rate.
 
-Caveat: labels and cases were written by the same author who iterated the prompt against them, and there is no
-held-out set, so the score is optimistic. Add unseen cases before trusting it.
+Two sets:
+
+- `cases.py` (60, "tuned"): the prompt was iterated against these, so the score is optimistic.
+- `heldout.py` (29): written after the prompt was frozen, labelled and committed *before* any run.
+  Quote this one. Result at first run: accuracy 0.793, policy-violation rate 0.103, which **failed** the gates
+  (>= 0.8, == 0). Cause and fix: `docs/adr/0005`. After the code fix: 0.862 / 0.0, but that fix followed the
+  failures, so it is no longer an unbiased estimate. Add fresh cases before trusting it further.
+
+Run both: `python -m evals.run --set all --provider anthropic --model anthropic/claude-haiku-4.5 --mode replay`.
+The model is only exercised on drafting; the auto-approve decision is code and has its own tests.

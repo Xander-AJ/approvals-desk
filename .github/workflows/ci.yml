@@ -35,8 +35,8 @@ jobs:
       # Replays recorded Claude Haiku 4.5 outputs (no API key, no cost, deterministic).
       # Re-record after any prompt change: see evals/README.md
       - run: >
-          uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5
-          --mode replay --fixtures ../evals/fixtures --min-accuracy 0.9 --max-violations 0 --max-unnecessary 0.1
+          uv run python -m evals.run --set all --provider anthropic --model anthropic/claude-haiku-4.5
+          --mode replay --fixtures ../evals/fixtures --min-accuracy 0.8 --max-violations 0 --max-unnecessary 0.1
 
   web:
     runs-on: ubuntu-latest

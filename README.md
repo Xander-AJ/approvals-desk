@@ -67,17 +67,18 @@ Replay semantics (what re-runs on resume) are documented in `docs/adr/0001` and 
 ## Tests, evals, CI
 
 ```bash
-cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 39 tests, testcontainers
+cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 78 tests, testcontainers
 cd backend && uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5 --mode replay
 cd sandbox && uv run pytest -q
 cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the compose stack up + seeded
 ```
 
-- **Evals** (`backend/evals`, `evals/README.md`): 60 labelled tickets (English/Swahili/Sheng) scored on the
-  *proposal* (action, amount, decision), not the reply. Gates: accuracy, **policy violations = 0**, unnecessary
-  escalations. CI replays recorded Claude Haiku 4.5 outputs, so it needs no key and costs nothing.
-  **Caveat:** labels and prompt were written and tuned by the same author with no held-out set; treat the score as
-  optimistic.
+- **Evals** (`backend/evals`, `evals/README.md`): 60 tuned + 29 held-out labelled tickets (English/Swahili/Sheng,
+  injection attempts, policy boundaries) scored on the *proposal*, not the reply. Gates: accuracy >= 0.8,
+  **policy violations = 0**. CI replays recorded Claude Haiku 4.5 outputs: no key, no cost.
+  **The held-out set failed the gates on first run** (0.793 accuracy, 0.103 violations) because auto-approval
+  trusted the model's risk score; auto-approval is now decided by code (`docs/adr/0005`). Post-fix 0.862 / 0.0 is not
+  an unbiased estimate.
 - **CI** (`.github/workflows/ci.yml`): ruff, mypy --strict, pytest, evals, eslint, tsc, build, Playwright against
   the compose stack, Docker builds, Trivy (HIGH/CRITICAL). Not yet run on GitHub: it has only been exercised locally.
 
