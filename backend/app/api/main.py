@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -18,8 +19,9 @@ from app.db.models import AuditEvent, Proposal, TenantPolicy, Ticket
 from app.db.session import tenant_session
 from app.domain.state_machine import InvalidTransition, ProposalState
 from app.services.runs import Runtime
-from app.services.store import apply_transition, snap
+from app.services.store import Store, apply_transition, snap
 
+log = logging.getLogger(__name__)
 Agent = Annotated[Principal, Depends(require("agent", "admin"))]
 Reviewer = Annotated[Principal, Depends(require("reviewer", "admin"))]
 Admin = Annotated[Principal, Depends(require("admin"))]
@@ -95,7 +97,13 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None) -> FastAPI:
             s.add(t)
             await s.flush()
             tid = str(t.id)
-        out = await rt.start(p.tenant_id, thread_id, body.customer_ref, body.message)
+        try:
+            out = await rt.start(p.tenant_id, thread_id, body.customer_ref, body.message)
+        except Exception:  # noqa: BLE001 - any agent/sandbox/LLM failure must reach a human, not a 500
+            log.exception("agent run failed for ticket %s", tid)
+            await Store(engine, p.tenant_id).escalate(thread_id, "agent run failed")
+            return {"ticket_id": tid, "thread_id": thread_id, "proposal_id": None, "decision": "escalated",
+                    "reply": None}
         if out.get("reply"):
             async with tenant_session(engine, p.tenant_id) as s:
                 (await s.get(Ticket, uuid.UUID(tid))).reply = out["reply"]  # type: ignore[union-attr]

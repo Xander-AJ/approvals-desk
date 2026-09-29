@@ -26,12 +26,18 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 class StubSandbox:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.fail_context = False
+        self.fail_mutate = False
 
     async def get_context(self, account_id: str) -> dict[str, Any]:
+        if self.fail_context:
+            raise httpx.ConnectError("sandbox unreachable")
         return {"transactions": [{"id": f"t{i}", "amount": "1200", "kind": "charge"} for i in range(2)]}
 
     async def mutate(self, action_type: str, account_id: str, amount: Decimal, key: str) -> dict[str, Any]:
         await asyncio.sleep(0.05)  # widen the race window for the concurrency test
+        if self.fail_mutate:
+            raise httpx.ConnectError("sandbox unreachable")
         self.calls.append(key)
         return {"txn_id": f"r{len(self.calls)}"}
 
@@ -132,3 +138,36 @@ async def test_metrics_reflect_edit_reject_and_latency(world) -> None:  # type: 
     m = (await api.get("/metrics", headers=h("reviewer"))).json()
     assert m["total"] >= 2 and 0 < m["override_rate"] <= 1
     assert m["avg_approval_latency_s"] is not None and m["avg_approval_latency_s"] >= 0
+
+
+async def test_agent_failure_escalates_to_a_human_instead_of_a_500(world) -> None:  # type: ignore[no-untyped-def]
+    world["sb"].fail_context = True
+    try:
+        r = await world["api"].post("/tickets", json={"customer_ref": "c", "message": "nimekatwa mara mbili KES 1,200"},
+                                    headers=world["h"]("agent"))
+    finally:
+        world["sb"].fail_context = False
+    assert r.status_code == 200, r.text
+    assert r.json()["decision"] == "escalated" and r.json()["proposal_id"] is None
+    esc = (await world["api"].get("/tickets?needs_human=true", headers=world["h"]("reviewer"))).json()
+    assert any(t["id"] == r.json()["ticket_id"] for t in esc)
+
+
+async def test_execution_failure_marks_failed_emits_event_and_is_terminal(world) -> None:  # type: ignore[no-untyped-def]
+    pid = await world["new"]()
+    calls = len(world["sb"].calls)
+    world["sb"].fail_mutate = True
+    try:
+        r = await world["api"].post(f"/proposals/{pid}/approve", headers=world["h"]("reviewer"))
+    finally:
+        world["sb"].fail_mutate = False
+    assert r.status_code == 200, r.text
+    d = (await world["api"].get(f"/proposals/{pid}", headers=world["h"]("reviewer"))).json()
+    assert d["state"] == "failed" and "error" in d["result"]
+    assert [a["event"] for a in d["audit"]][-2:] == ["approved", "failed"]
+    assert len(world["sb"].calls) == calls  # nothing moved
+    async with tenant_session(world["engine"], world["tenant"]) as s:
+        ev = (await s.execute(select(OutboxEvent).where(OutboxEvent.topic == "proposal.failed"))).scalars().all()
+        assert any(e.payload["proposal_id"] == pid for e in ev)
+    # failed is terminal: a second approve cannot re-run the money movement
+    assert (await world["api"].post(f"/proposals/{pid}/approve", headers=world["h"]("reviewer"))).status_code == 409
