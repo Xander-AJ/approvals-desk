@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from app.agent.fake_llm import FakeLLM
 from app.agent.llm import LLM
-from app.agent.policy import evaluate
+from app.agent.policy import evaluate, is_tampered, verify_claim
 from evals.cases import STANDARD_POLICY, Case, build_cases
 from evals.heldout import build_heldout
 
@@ -31,7 +31,9 @@ async def run(llm: LLM | None = None, cases: list[Case] | None = None) -> dict[s
             ok = c.expect_action is None
             decision = None
         else:
-            d, _ = evaluate(STANDARD_POLICY, p.action_type, p.amount, p.risk_score)
+            d, _ = evaluate(STANDARD_POLICY, p.action_type, p.amount, p.risk_score,
+                            verified=verify_claim(p.action_type, p.amount, ctx["transactions"]),
+                            tampered=is_tampered(c.message))
             decision = d.value
             ok = (p.action_type == c.expect_action and p.amount == Decimal(c.expect_amount or "0")
                   and decision == c.expect_decision)

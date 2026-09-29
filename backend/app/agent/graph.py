@@ -14,7 +14,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
 from app.agent.llm import LLM
-from app.agent.policy import Decision, Policy, evaluate
+from app.agent.policy import Decision, Policy, evaluate, is_tampered, verify_claim
 from app.domain.idempotency import idempotency_key
 
 
@@ -77,7 +77,11 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
                 await deps.store.escalate(s["thread_id"], "money request without a draftable proposal")
                 return {"decision": "escalated", "outcome": "passed to a human agent for review"}
             return {"decision": "none", "outcome": "no action proposed"}
-        d, reason = evaluate(deps.policy, p["action_type"], Decimal(p["amount"]), p["risk_score"])
+        amount = Decimal(p["amount"])
+        d, reason = evaluate(
+            deps.policy, p["action_type"], amount, p["risk_score"],
+            verified=verify_claim(p["action_type"], amount, s["context"].get("transactions", [])),
+            tampered=is_tampered(s["message"]))
         row = await deps.store.save_proposal(s["thread_id"], p, d.value, reason)
         return {"decision": d.value, "proposal_id": row["id"], "version": row["version"]}
 
