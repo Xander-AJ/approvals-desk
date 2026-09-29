@@ -62,9 +62,15 @@ locals {
     sandbox_database_url = "postgresql+asyncpg://owner:${random_password.db_owner.result}@${local.db_host}:5432/approvals"
     app_db_password      = random_password.app_user.result
     webhook_secret       = random_password.webhook.result
+    sandbox_api_key      = random_password.sandbox_key.result
     anthropic_api_key    = var.anthropic_api_key == "" ? "unset" : var.anthropic_api_key
   }
   redis_url = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
+}
+
+resource "random_password" "sandbox_key" {
+  length  = 40
+  special = false
 }
 
 resource "random_password" "webhook" {

@@ -70,6 +70,7 @@ locals {
     { name = "AD_DATABASE_URL", valueFrom = local.secret_arn["database_url"] },
     { name = "AD_CHECKPOINT_DSN", valueFrom = local.secret_arn["checkpoint_dsn"] },
     { name = "AD_WEBHOOK_SECRET", valueFrom = local.secret_arn["webhook_secret"] },
+    { name = "AD_SANDBOX_API_KEY", valueFrom = local.secret_arn["sandbox_api_key"] },
     { name = "ANTHROPIC_API_KEY", valueFrom = local.secret_arn["anthropic_api_key"] },
   ]
 }
@@ -151,7 +152,10 @@ resource "aws_ecs_task_definition" "sandbox" {
     essential    = true
     portMappings = [{ containerPort = 8001 }]
     environment  = [{ name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otlp_endpoint }]
-    secrets      = [{ name = "SANDBOX_DATABASE_URL", valueFrom = local.secret_arn["sandbox_database_url"] }]
+    secrets = [
+      { name = "SANDBOX_DATABASE_URL", valueFrom = local.secret_arn["sandbox_database_url"] },
+      { name = "SANDBOX_API_KEY", valueFrom = local.secret_arn["sandbox_api_key"] },
+    ]
     logConfiguration = { logDriver = "awslogs", options = {
     awslogs-group = aws_cloudwatch_log_group.app.name, awslogs-region = var.region, awslogs-stream-prefix = "sandbox" } }
   }])

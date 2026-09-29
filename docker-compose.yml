@@ -17,6 +17,7 @@ services:
     environment:
       SANDBOX_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/sandbox
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      SANDBOX_API_KEY: compose-dev-sandbox-key-0123456789
     depends_on: { postgres: { condition: service_healthy } }
     ports: ["8001:8001"]
   migrate:
@@ -31,6 +32,7 @@ services:
       AD_DATABASE_URL: postgresql+asyncpg://app_user:app_user@postgres:5432/approvals
       AD_CHECKPOINT_DSN: postgresql://postgres:postgres@postgres:5432/approvals
       AD_SANDBOX_URL: http://sandbox:8001
+      AD_SANDBOX_API_KEY: compose-dev-sandbox-key-0123456789
       AD_REDIS_URL: redis://redis:6379
       AD_JAEGER_URL: http://localhost:16686
       MIGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/approvals

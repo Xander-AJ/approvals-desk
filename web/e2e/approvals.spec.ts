@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 const SANDBOX = process.env.SANDBOX_URL ?? "http://localhost:8001";
+const SANDBOX_HEADERS = { "X-Sandbox-Key": process.env.SANDBOX_API_KEY ?? "compose-dev-sandbox-key-0123456789" };
 
 async function login(page: Page, role: "agent" | "reviewer" | "admin", tenant = "Mzigo Wallet") {
   await page.goto("/login");
@@ -31,7 +32,7 @@ async function customerReportsDoubleCharge(page: Page, customer = "wanjiku"): Pr
 }
 
 async function ledgerCount(page: Page) {
-  return (await (await page.request.get(`${SANDBOX}/ledger`)).json()).length as number;
+  return (await (await page.request.get(`${SANDBOX}/ledger`, { headers: SANDBOX_HEADERS })).json()).length as number;
 }
 
 test("reviewer approves: exactly one refund executes and the timeline links traces", async ({ page }) => {
@@ -63,7 +64,7 @@ test("reviewer edits the amount: diff shown and the EDITED amount is what execut
   const diff = page.getByText("Reviewer edit").locator("..");
   await expect(diff.locator("s")).toHaveText("1200.00");
   await expect(diff.locator("b")).toHaveText("900.00");
-  const ledger = await (await page.request.get(`${SANDBOX}/ledger`)).json();
+  const ledger = await (await page.request.get(`${SANDBOX}/ledger`, { headers: SANDBOX_HEADERS })).json();
   expect(ledger.at(-1).amount).toBe("900.00");
 });
 

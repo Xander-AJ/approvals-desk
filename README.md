@@ -30,7 +30,8 @@ cd web && npm ci && API_URL=http://localhost:8000 npm run dev    # http://localh
 
 Sign in at `/login` (dev issuer, enabled only by `AD_DEV_AUTH=true`): pick a tenant and a role
 (`agent` creates tickets, `reviewer` decides, `admin` edits policy).
-Jaeger: http://localhost:16686 · Sandbox ledger: http://localhost:8001/ledger
+Jaeger: http://localhost:16686 · Sandbox ledger:
+`curl -H 'X-Sandbox-Key: compose-dev-sandbox-key-0123456789' localhost:8001/ledger`
 
 ## 60-second demo
 
@@ -38,7 +39,7 @@ Jaeger: http://localhost:16686 · Sandbox ledger: http://localhost:8001/ledger
    The agent drafts a KES 1,200 refund citing both ledger charges; it lands in the inbox as *pending review*.
 2. Kill the worker live: `docker compose kill worker`.
 3. **Inbox** as *reviewer*: open the proposal, click **Approve**. The state becomes `approved` but nothing has
-   executed: `curl localhost:8001/ledger` still shows no new refund.
+   executed: the ledger (curl above) still shows no new refund.
 4. `docker compose start worker`. The queued resume job runs; the proposal becomes `executed`.
    The ledger shows **exactly one** refund.
 5. Open the proposal's **audit timeline** and follow a `trace ↗` link: one Jaeger trace spans
@@ -88,7 +89,7 @@ cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the 
 deploy. The frontend is meant for Vercel with `API_URL` pointing at the ALB.
 
 Known production gaps: Redis in-transit encryption is off; one NAT gateway; the Pesa Sandbox is a fake
-(no auth) and shares the RDS instance; no remote Terraform backend is configured.
+(shared-key auth only) and shares the RDS instance; no remote Terraform backend is configured.
 
 ## Decisions
 
