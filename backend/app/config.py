@@ -1,0 +1,26 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    database_url: str = "postgresql+asyncpg://app_user:app_user@localhost:5432/approvals"
+    sandbox_url: str = "http://localhost:8001"
+    redis_url: str = "redis://localhost:6379"
+    jwt_secret: str = "dev-secret-change-me-0123456789abcdef-long"
+    jwt_issuer: str = "approvals-desk-dev"
+    jwt_jwks_url: str | None = None  # set in prod for RS256 OIDC verification
+    checkpoint_dsn: str = "postgresql://postgres:postgres@localhost:5432/approvals"
+    webhook_url: str | None = None
+    webhook_secret: str = "dev-webhook-secret"
+    async_resume: bool = False  # API enqueues resume to the arq worker instead of running it in-process
+    llm_provider: str = "fake"  # fake | anthropic
+    llm_model: str = "claude-haiku-4-5-20251001"
+    llm_fixture_dir: str = "evals/fixtures"
+    llm_fixture_mode: str = "off"  # off | record | replay
+    dev_auth: bool = False  # enables POST /dev/token for local demos ONLY
+    jaeger_url: str = "http://localhost:16686"
+
+    def validate_for_runtime(self) -> None:
+        if self.dev_auth and self.jwt_jwks_url:
+            raise ValueError("dev_auth must not be enabled together with a production JWKS issuer")
+
+    model_config = {"env_prefix": "AD_"}
