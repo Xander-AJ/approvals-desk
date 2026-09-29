@@ -1,0 +1,78 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - run: uv run ruff check app tests
+      - run: uv run mypy --strict app
+      - run: uv run pytest -q          # unit + testcontainers integration + RLS + chaos
+
+  sandbox:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: sandbox } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - run: uv run pytest -q
+
+  evals:
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      # Replays recorded Claude Haiku 4.5 outputs (no API key, no cost, deterministic).
+      # Re-record after any prompt change: see evals/README.md
+      - run: >
+          uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5
+          --mode replay --fixtures ../evals/fixtures --min-accuracy 0.9 --max-violations 0 --max-unnecessary 0.1
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx eslint .
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build --wait --wait-timeout 180 api worker sandbox
+      - run: docker compose exec -T api python -m app.seed
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - if: failure()
+        run: docker compose logs --tail=200
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [backend, sandbox]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f backend/Dockerfile -t approvals-api .
+      - run: docker build -f sandbox/Dockerfile -t pesa-sandbox .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: approvals-api, severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true }
