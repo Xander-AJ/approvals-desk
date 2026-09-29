@@ -1,6 +1,7 @@
 """Pesa Sandbox: fake wallet/ledger. Mutating calls require Idempotency-Key; replay returns original result."""
 from __future__ import annotations
 
+import hmac
 import os
 import uuid
 from decimal import Decimal
@@ -48,7 +49,7 @@ class MutateIn(BaseModel):
     reference_txn: str | None = None
 
 
-def create_app(db_url: str | None = None) -> FastAPI:
+def create_app(db_url: str | None = None, api_key: str | None = None) -> FastAPI:
     engine = create_async_engine(db_url or os.environ["SANDBOX_DATABASE_URL"])
     maker = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -58,7 +59,11 @@ def create_app(db_url: str | None = None) -> FastAPI:
             await c.run_sync(Base.metadata.create_all)
         yield
 
-    app = FastAPI(title="Pesa Sandbox", lifespan=lifespan)
+    async def require_key(x_sandbox_key: str | None = Header(None)) -> None:
+        if api_key is not None and not (x_sandbox_key and hmac.compare_digest(x_sandbox_key, api_key)):
+            raise HTTPException(401, "invalid or missing X-Sandbox-Key")
+
+    app = FastAPI(title="Pesa Sandbox", lifespan=lifespan, dependencies=[Depends(require_key)])
     app.state.engine = engine
 
     async def session() -> Any:

@@ -2,7 +2,10 @@ import os
 
 from pesa.app import create_app
 
-app = create_app()
+_key = os.environ.get("SANDBOX_API_KEY")
+if not _key and os.environ.get("SANDBOX_INSECURE") != "1":
+    raise RuntimeError("set SANDBOX_API_KEY (or SANDBOX_INSECURE=1 for local experiments)")
+app = create_app(api_key=_key)
 
 if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
     from opentelemetry import trace

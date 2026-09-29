@@ -94,7 +94,9 @@ def build_runtime(settings: Settings, checkpointer: Any) -> Runtime:
     from app.agent.llm import make_llm
     from app.services.sandbox_client import HttpSandbox
     engine = make_engine(settings.database_url)
-    return Runtime(engine, make_llm(settings), HttpSandbox(httpx.AsyncClient(base_url=settings.sandbox_url)), checkpointer)
+    return Runtime(engine, make_llm(settings), HttpSandbox(httpx.AsyncClient(
+        base_url=settings.sandbox_url,
+        headers={"X-Sandbox-Key": settings.sandbox_api_key} if settings.sandbox_api_key else {})), checkpointer)
 
 
 async def startup(ctx: dict[str, Any]) -> None:

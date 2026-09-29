@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://app_user:app_user@localhost:5432/approvals"
     sandbox_url: str = "http://localhost:8001"
+    sandbox_api_key: str | None = None
     redis_url: str = "redis://localhost:6379"
     jwt_secret: str | None = None  # HS256 (dev issuer only); production uses jwt_jwks_url
 

@@ -31,7 +31,9 @@ async def main() -> None:
                 sess.add(TenantPolicy(tenant_id=tid, auto_approve_max=auto, hard_limit=Decimal("50000"),
                                       max_auto_risk=30, allowed_actions=["refund", "reversal", "fee_waiver"],
                                       sla_minutes=60))
-    async with httpx.AsyncClient(base_url=s.sandbox_url) as sb:
+    async with httpx.AsyncClient(
+            base_url=s.sandbox_url,
+            headers={"X-Sandbox-Key": s.sandbox_api_key} if s.sandbox_api_key else {}) as sb:
         for acct in ("wanjiku", "otieno"):
             await sb.post("/dev/seed", json={"account_id": acct, "balance": "0", "txns": [
                 {"id": f"{acct}-c1", "amount": "1200", "merchant": "Java House"},
