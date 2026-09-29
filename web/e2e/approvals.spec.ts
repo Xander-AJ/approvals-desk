@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 
 const SANDBOX = process.env.SANDBOX_URL ?? "http://localhost:8001";
@@ -137,4 +138,114 @@ test("admin changes the review SLA and it persists; invalid input is rejected by
   await page.getByLabel("Review SLA (minutes)").fill("60");
   await page.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
+});
+
+
+// ---------------------------------------------------------------- compensation
+test("admin undoes an executed payout once; reviewers cannot; the ledger shows the clawback", async ({ page }) => {
+  const id = await customerReportsDoubleCharge(page);
+  await login(page, "reviewer");
+  await page.goto(`/proposals/${id}`);
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByTestId("state-badge")).toHaveText("executed");
+  await expect(page.getByRole("button", { name: /Undo payout/ })).toHaveCount(0); // reviewer: no clawback
+  await signOut(page);
+
+  await login(page, "admin");
+  await page.goto(`/proposals/${id}`);
+  await expect(page.getByTestId("state-badge")).toHaveText("executed");
+  await page.getByRole("button", { name: /Undo payout/ }).click();
+  await expect(page.getByRole("button", { name: "Confirm compensation" })).toBeDisabled(); // reason required
+  await page.getByLabel("Compensation reason").fill("refund issued in error, customer was not owed");
+  await page.getByRole("button", { name: "Confirm compensation" }).click();
+  await expect(page.getByTestId("state-badge")).toHaveText("compensated");
+  await expect(page.getByRole("button", { name: /Undo payout/ })).toHaveCount(0); // terminal
+  await expect(page.locator("ol").getByText("compensated", { exact: true })).toBeVisible();
+  const ledger = await (await page.request.get(`${SANDBOX}/ledger`, { headers: SANDBOX_HEADERS })).json();
+  type Entry = { id: string; kind: string; reference: string | null; amount: string };
+  const comp = (ledger as Entry[]).filter((e) => e.kind === "compensation").at(-1)!;
+  expect(comp.amount).toBe("1200.00");
+  expect((ledger as Entry[]).some((e) => e.id === comp.reference && e.kind === "refund")).toBe(true); // undoes a real refund
+});
+
+// ---------------------------------------------------------------- Slack
+test("integrations page is admin-only and validates the Slack webhook and identities", async ({ page }) => {
+  await login(page, "reviewer");
+  await expect(page.getByRole("link", { name: "Integrations" })).toHaveCount(0);
+  await page.goto("/integrations");
+  await expect(page.getByText("Only admins can manage integrations.")).toBeVisible();
+  await signOut(page);
+
+  await login(page, "admin");
+  await page.getByRole("link", { name: "Integrations" }).click();
+  await expect(page.getByRole("heading", { name: "Slack approvals" })).toBeVisible();
+
+  await page.getByLabel("Slack webhook URL").fill("https://evil.example.com/hooks.slack.com");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("hooks.slack.com");
+
+  await page.getByLabel("Slack user ID").fill("U0E2EIDENT");
+  await page.getByLabel("Name").fill("E2E Reviewer");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByRole("cell", { name: "U0E2EIDENT", exact: true })).toBeVisible();
+  await page.getByLabel("Slack user ID").fill("U0E2EIDENT");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByText("that Slack user is already mapped")).toBeVisible();
+  await page.getByRole("button", { name: "Remove U0E2EIDENT" }).click();
+  await expect(page.getByRole("cell", { name: "U0E2EIDENT", exact: true })).toHaveCount(0);
+});
+
+const TENANT = "11111111-1111-1111-1111-111111111111";
+const SLACK_SECRET = process.env.SLACK_SIGNING_SECRET ?? "compose-dev-slack-signing-secret";
+const API = process.env.API_URL ?? "http://localhost:8000";
+
+async function slackClick(page: Page, action: "approve" | "reject", proposalId: string, user: string, secret = SLACK_SECRET) {
+  const payload = {
+    type: "block_actions",
+    user: { id: user },
+    response_url: "https://hooks.slack.com/actions/T000/1/e2e",
+    actions: [{ action_id: `proposal_${action}`, value: `${action}|${TENANT}|${proposalId}` }],
+  };
+  const body = new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = "v0=" + createHmac("sha256", secret).update(`v0:${ts}:${body}`).digest("hex");
+  return page.request.post(`${API}/integrations/slack/interactions`, {
+    data: body,
+    headers: { "content-type": "application/x-www-form-urlencoded", "x-slack-request-timestamp": ts, "x-slack-signature": sig },
+  });
+}
+
+test("a signed Slack click from a mapped reviewer executes the refund; forged and unmapped clicks do nothing", async ({ page }) => {
+  await login(page, "admin");
+  await page.goto("/integrations");
+  await page.getByLabel("Slack user ID").fill("U0E2ECLICK");
+  await page.getByLabel("Name").fill("Slack Reviewer");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByRole("cell", { name: "U0E2ECLICK", exact: true })).toBeVisible();
+  await signOut(page);
+
+  const before = await ledgerCount(page);
+  const id = await customerReportsDoubleCharge(page);
+
+  // forged (wrong secret) and unmapped clicks change nothing
+  expect((await slackClick(page, "approve", id, "U0E2ECLICK", "not-the-secret")).status()).toBe(401);
+  expect((await slackClick(page, "approve", id, "U0NOTMAPPED")).status()).toBe(200);
+  expect(await ledgerCount(page)).toBe(before);
+
+  // the mapped reviewer's genuine click approves; the worker executes; the console shows who did it
+  expect((await slackClick(page, "approve", id, "U0E2ECLICK")).status()).toBe(200);
+  await expect.poll(() => ledgerCount(page), { timeout: 30_000 }).toBe(before + 1);
+  await login(page, "reviewer");
+  await page.goto(`/proposals/${id}`);
+  await expect(page.getByTestId("state-badge")).toHaveText("executed");
+  await expect(page.locator("ol").getByText("by slack:U0E2ECLICK")).toBeVisible();
+  await slackClick(page, "approve", id, "U0E2ECLICK"); // double click: still one refund
+  expect(await ledgerCount(page)).toBe(before + 1);
+
+  // cleanup so reruns start clean
+  await signOut(page);
+  await login(page, "admin");
+  await page.goto("/integrations");
+  await page.getByRole("button", { name: "Remove U0E2ECLICK" }).click();
+  await expect(page.getByRole("cell", { name: "U0E2ECLICK", exact: true })).toHaveCount(0);
 });

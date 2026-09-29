@@ -43,6 +43,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       AD_DEV_AUTH: "true"
       AD_JWT_SECRET: compose-dev-only-secret-0123456789-abcdef
+      AD_SLACK_SIGNING_SECRET: compose-dev-slack-signing-secret
+      AD_CONSOLE_URL: http://localhost:3000
       AD_ASYNC_RESUME: "true"
     read_only: true
     tmpfs: [/tmp]

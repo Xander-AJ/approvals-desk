@@ -27,6 +27,8 @@ export default function ProposalPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState("");
+  const [undoing, setUndoing] = useState(false);
+  const [reason, setReason] = useState("");
 
   const q = useQuery({
     queryKey: ["proposal", id],
@@ -44,7 +46,18 @@ export default function ProposalPage() {
     },
   });
 
+  const compensate = useMutation({
+    mutationFn: (r: string) => api(Ok, `/proposals/${id}/compensate`, { method: "POST", body: { reason: r } }),
+    onSuccess: () => {
+      setUndoing(false);
+      setReason("");
+      qc.invalidateQueries({ queryKey: ["proposal", id] });
+      qc.invalidateQueries({ queryKey: ["proposals"] });
+    },
+  });
+
   const p = q.data;
+  const canCompensate = session?.role === "admin" && p?.state === "executed";
   const canDecide = (session?.role === "reviewer" || session?.role === "admin") && p?.state === "pending_review";
 
   return (
@@ -103,6 +116,44 @@ export default function ProposalPage() {
                   <button className={btnGhost} onClick={() => { setAmount(p.amount); setEditing(true); }}>Edit amount</button>
                   <button className={btnDanger} disabled={decide.isPending} onClick={() => decide.mutate({ path: "reject" })}>Reject</button>
                 </div>
+              )}
+            </Card>
+          )}
+
+          {canCompensate && (
+            <Card title="Undo this payout">
+              <ErrorNote error={compensate.error} />
+              {undoing ? (
+                <form
+                  className="space-y-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    compensate.mutate(reason);
+                  }}
+                >
+                  <p className="text-sm text-zinc-600">
+                    This debits the customer again for {p.currency} {Number(p.amount).toLocaleString()}. It can only be done once and is recorded in the audit trail.
+                  </p>
+                  <textarea
+                    aria-label="Compensation reason"
+                    className={`${input} w-full`}
+                    rows={2}
+                    minLength={5}
+                    maxLength={500}
+                    required
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Why is this being undone? (min 5 characters)"
+                  />
+                  <div className="flex gap-2">
+                    <button className={btnDanger} disabled={compensate.isPending || reason.trim().length < 5}>
+                      Confirm compensation
+                    </button>
+                    <button type="button" className={btnGhost} onClick={() => setUndoing(false)}>Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <button className={btnGhost} onClick={() => setUndoing(true)}>Undo payout…</button>
               )}
             </Card>
           )}

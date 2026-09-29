@@ -8,7 +8,7 @@ import { BulkResult, Proposal, Ticket } from "@/lib/schemas";
 import { useRequireSession } from "@/lib/useSession";
 import { btnDanger, btnGhost, btnPrimary, Card, ErrorNote, input, StateBadge } from "@/components/ui";
 
-const STATES = ["", "pending_review", "approved", "edited", "executed", "rejected", "expired", "failed"];
+const STATES = ["", "pending_review", "approved", "edited", "executed", "rejected", "expired", "failed", "compensated"];
 const ACTIONS = ["", "refund", "reversal", "fee_waiver"];
 
 export default function InboxPage() {

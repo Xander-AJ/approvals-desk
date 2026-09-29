@@ -67,3 +67,14 @@ export const TicketResult = z.object({
 });
 
 export const BulkResult = z.object({ results: z.record(z.string(), z.string()) });
+
+export const Integrations = z.object({
+  slack: z.object({
+    configured: z.boolean(),
+    webhook_hint: z.string().nullable(),
+    channel_label: z.string().nullable(),
+    interactions_enabled: z.boolean(),
+  }),
+  identities: z.array(z.object({ id: z.string(), slack_user_id: z.string(), role: z.string(), label: z.string() })),
+});
+export type Integrations = z.infer<typeof Integrations>;
