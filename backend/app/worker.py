@@ -15,9 +15,10 @@ from opentelemetry import propagate, trace
 from sqlalchemy import select
 
 from app.config import Settings
-from app.db.models import OutboxEvent, Proposal, Tenant
+from app.db.models import OutboxDelivery, OutboxEvent, Proposal, Tenant, TenantIntegration
 from app.db.session import make_engine, tenant_session
 from app.domain.state_machine import InvalidTransition, ProposalState
+from app.integrations import slack
 from app.services.runs import Runtime, recover_runs
 from app.services.store import apply_transition
 from app.telemetry import setup_tracing
@@ -70,24 +71,46 @@ async def _dispatch(rt: Runtime, settings: Settings, client: httpx.AsyncClient) 
     sent = 0
     for tid in await all_tenants(rt):
         async with tenant_session(rt.engine, tid) as s:
+            integ = await s.get(TenantIntegration, tid)
             rows = (await s.execute(select(OutboxEvent).where(OutboxEvent.delivered_at.is_(None))
                                     .order_by(OutboxEvent.created_at).limit(50)
                                     .with_for_update(skip_locked=True))).scalars().all()
             for ev in rows:
+                needed: list[str] = []
                 if settings.webhook_url:
-                    body = json.dumps({"topic": ev.topic, "tenant_id": str(tid), **ev.payload}).encode()
+                    needed.append("webhook")
+                if ev.topic == "proposal.pending_review" and integ and integ.slack_webhook_url:
+                    needed.append("slack")
+                done = set((await s.execute(select(OutboxDelivery.sink)
+                                            .where(OutboxDelivery.event_id == ev.id))).scalars())
+                ok = True
+                for sink in (x for x in needed if x not in done):
                     try:
-                        r = await client.post(
-                            settings.webhook_url, content=body,
-                            headers={"X-Event-Id": str(ev.id), "X-Signature": sign(settings.webhook_secret, body),
-                                     "Content-Type": "application/json"}, timeout=5)
-                        r.raise_for_status()
-                    except httpx.HTTPError:
+                        if sink == "webhook":
+                            await _send_webhook(client, settings, tid, ev)
+                        else:
+                            assert integ and integ.slack_webhook_url
+                            await slack.post(client, integ.slack_webhook_url,
+                                             slack.proposal_message(tid, ev.payload["proposal"], settings.console_url))
+                    except (httpx.HTTPError, ValueError):
                         ev.attempts += 1
+                        ok = False
                         continue
-                ev.delivered_at = datetime.now(UTC)
-                sent += 1
+                    s.add(OutboxDelivery(tenant_id=tid, event_id=ev.id, sink=sink))
+                    await s.flush()  # record each success immediately: a later sink failing must not resend this one
+                if ok:
+                    ev.delivered_at = datetime.now(UTC)
+                    sent += 1
     return sent
+
+
+async def _send_webhook(client: httpx.AsyncClient, settings: Settings, tid: uuid.UUID, ev: OutboxEvent) -> None:
+    assert settings.webhook_url
+    body = json.dumps({"topic": ev.topic, "tenant_id": str(tid), **ev.payload}).encode()
+    r = await client.post(settings.webhook_url, content=body, timeout=5,
+                          headers={"X-Event-Id": str(ev.id), "X-Signature": sign(settings.webhook_secret, body),
+                                   "Content-Type": "application/json"})
+    r.raise_for_status()
 
 
 def build_runtime(settings: Settings, checkpointer: Any) -> Runtime:

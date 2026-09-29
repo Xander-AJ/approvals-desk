@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     jwt_jwks_url: str | None = None  # set in prod for RS256 OIDC verification
     checkpoint_dsn: str = "postgresql://postgres:postgres@localhost:5432/approvals"
     webhook_url: str | None = None
+    slack_signing_secret: str | None = None  # enables POST /integrations/slack/interactions
+    console_url: str = "http://localhost:3000"  # base URL used for "Open in console" links
     webhook_secret: str = "dev-webhook-secret"
     async_resume: bool = False  # API enqueues resume to the arq worker instead of running it in-process
     llm_provider: str = "fake"  # fake | anthropic

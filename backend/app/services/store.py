@@ -33,6 +33,11 @@ def apply_transition(s: AsyncSession, p: Proposal, target: ProposalState, actor:
     s.add(AuditEvent(tenant_id=p.tenant_id, proposal_id=p.id, actor=actor, event=target.value,
                      before=before, after={**snap(p), **({"note": note} if note else {})},
                      trace_id=current_trace_id()))
+    if target == ProposalState.PENDING_REVIEW:
+        s.add(OutboxEvent(tenant_id=p.tenant_id, topic="proposal.pending_review",
+                          payload={"proposal_id": str(p.id), "state": target.value,
+                                   "proposal": {**snap(p), "evidence": p.evidence,
+                                                "expires_at": p.expires_at.isoformat() if p.expires_at else None}}))
     if target in (ProposalState.EXECUTED, ProposalState.FAILED, ProposalState.REJECTED, ProposalState.EXPIRED):
         s.add(OutboxEvent(tenant_id=p.tenant_id, topic=f"proposal.{target.value}",
                           payload={"proposal_id": str(p.id), "state": target.value, "result": result}))

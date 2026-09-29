@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
+from urllib.parse import parse_qs
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+import httpx
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from opentelemetry import propagate
 from pydantic import BaseModel, Field, model_validator
@@ -15,9 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.agent.policy import Decision, evaluate
 from app.auth import Principal, require
 from app.config import Settings
-from app.db.models import AuditEvent, Proposal, TenantPolicy, Ticket
+from app.db.models import AuditEvent, Proposal, SlackIdentity, TenantIntegration, TenantPolicy, Ticket
 from app.db.session import tenant_session
 from app.domain.state_machine import InvalidTransition, ProposalState
+from app.integrations import slack
 from app.services.runs import Runtime
 from app.services.store import Store, apply_transition, snap
 
@@ -53,6 +57,17 @@ class DevTokenIn(BaseModel):
     user: str
 
 
+class SlackConfigIn(BaseModel):
+    webhook_url: str = Field(max_length=500)
+    channel_label: str | None = Field(None, max_length=100)
+
+
+class SlackIdentityIn(BaseModel):
+    slack_user_id: str = Field(pattern=r"^[UW][A-Z0-9]{2,31}$")
+    role: Literal["reviewer", "admin"]
+    label: str = Field("", max_length=200)
+
+
 class PolicyIn(BaseModel):
     auto_approve_max: Money = Field(ge=0)
     hard_limit: Money = Field(gt=0)
@@ -67,7 +82,7 @@ class PolicyIn(BaseModel):
         return self
 
 
-def create_app(settings: Settings, rt: Runtime, queue: Any = None) -> FastAPI:
+def create_app(settings: Settings, rt: Runtime, queue: Any = None, http: httpx.AsyncClient | None = None) -> FastAPI:
     settings.validate_for_runtime()
     app = FastAPI(title="approvals-desk")
     app.state.settings = settings
@@ -239,5 +254,139 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None) -> FastAPI:
         return {"total": total, "auto_approve_rate": auto / total if total else 0.0,
                 "override_rate": overridden / human if human else 0.0,
                 "avg_approval_latency_s": float(lat) if lat is not None else None}
+
+    # ------------------------------------------------------------------ Slack integration
+    http_client = http or httpx.AsyncClient()
+
+    @app.get("/integrations")
+    async def get_integrations(p: Admin) -> dict[str, Any]:
+        async with tenant_session(engine, p.tenant_id) as s:
+            integ = await s.get(TenantIntegration, p.tenant_id)
+            idents = (await s.execute(select(SlackIdentity).order_by(SlackIdentity.label))).scalars().all()
+        url = integ.slack_webhook_url if integ else None
+        return {"slack": {"configured": bool(url), "webhook_hint": f"…{url[-4:]}" if url else None,
+                          "channel_label": integ.slack_channel_label if integ else None,
+                          "interactions_enabled": bool(settings.slack_signing_secret)},
+                "identities": [{"id": str(i.id), "slack_user_id": i.slack_user_id, "role": i.role, "label": i.label}
+                               for i in idents]}
+
+    @app.put("/integrations/slack")
+    async def put_slack(body: SlackConfigIn, p: Admin) -> dict[str, str]:
+        if not slack.is_slack_url(body.webhook_url):
+            raise HTTPException(422, "webhook_url must be an https://hooks.slack.com/... URL")
+        async with tenant_session(engine, p.tenant_id) as s:
+            row = await s.get(TenantIntegration, p.tenant_id) or TenantIntegration(tenant_id=p.tenant_id)
+            row.slack_webhook_url, row.slack_channel_label = body.webhook_url, body.channel_label
+            s.add(row)
+            s.add(AuditEvent(tenant_id=p.tenant_id, actor=p.user, event="integration_updated",
+                             after={"slack": "configured", "channel_label": body.channel_label}))
+        return {"status": "ok"}
+
+    @app.delete("/integrations/slack")
+    async def delete_slack(p: Admin) -> dict[str, str]:
+        async with tenant_session(engine, p.tenant_id) as s:
+            row = await s.get(TenantIntegration, p.tenant_id)
+            if row:
+                row.slack_webhook_url = None
+            s.add(AuditEvent(tenant_id=p.tenant_id, actor=p.user, event="integration_removed", after={"slack": "removed"}))
+        return {"status": "ok"}
+
+    @app.post("/integrations/slack/test")
+    async def test_slack(p: Admin) -> dict[str, str]:
+        async with tenant_session(engine, p.tenant_id) as s:
+            row = await s.get(TenantIntegration, p.tenant_id)
+        if not row or not row.slack_webhook_url:
+            raise HTTPException(409, "Slack is not configured")
+        try:
+            await slack.post(http_client, row.slack_webhook_url, {"text": "approvals-desk: test message. Slack is connected."})
+        except (httpx.HTTPError, ValueError) as e:
+            raise HTTPException(502, f"Slack rejected the test message: {type(e).__name__}") from e
+        return {"status": "ok"}
+
+    @app.post("/integrations/slack/identities")
+    async def add_identity(body: SlackIdentityIn, p: Admin) -> dict[str, str]:
+        async with tenant_session(engine, p.tenant_id) as s:
+            dup = (await s.execute(select(SlackIdentity).where(SlackIdentity.slack_user_id == body.slack_user_id))).first()
+            if dup:
+                raise HTTPException(409, "that Slack user is already mapped")
+            ident = SlackIdentity(tenant_id=p.tenant_id, **body.model_dump())
+            s.add(ident)
+            await s.flush()
+            s.add(AuditEvent(tenant_id=p.tenant_id, actor=p.user, event="slack_identity_added",
+                             after={"slack_user_id": body.slack_user_id, "role": body.role}))
+            return {"id": str(ident.id)}
+
+    @app.delete("/integrations/slack/identities/{iid}")
+    async def remove_identity(iid: uuid.UUID, p: Admin) -> dict[str, str]:
+        async with tenant_session(engine, p.tenant_id) as s:
+            ident = await s.get(SlackIdentity, iid)
+            if not ident:
+                raise HTTPException(404)
+            s.add(AuditEvent(tenant_id=p.tenant_id, actor=p.user, event="slack_identity_removed",
+                             after={"slack_user_id": ident.slack_user_id}))
+            await s.delete(ident)
+        return {"status": "ok"}
+
+    async def _slack_reply(url: str | None, body: dict[str, Any]) -> None:
+        if not url or not slack.is_slack_url(url):  # response_url comes from the request: never trust its host
+            return
+        try:
+            await slack.post(http_client, url, body)
+        except (httpx.HTTPError, ValueError):
+            log.warning("could not update Slack message")
+
+    @app.post("/integrations/slack/interactions")
+    async def slack_interactions(request: Request, background: BackgroundTasks) -> dict[str, str]:
+        secret = settings.slack_signing_secret
+        if not secret:
+            raise HTTPException(503, "Slack interactions are not configured")
+        raw = await request.body()
+        if not slack.verify_signature(secret, request.headers.get("x-slack-request-timestamp"),
+                                      request.headers.get("x-slack-signature"), raw):
+            raise HTTPException(401, "invalid Slack signature")
+        try:
+            payload = json.loads(parse_qs(raw.decode())["payload"][0])
+        except (KeyError, ValueError, IndexError) as e:
+            raise HTTPException(400, "malformed interaction payload") from e
+        actions = payload.get("actions") or []
+        if payload.get("type") != "block_actions" or not actions or actions[0].get("action_id") not in (
+                slack.APPROVE_ACTION, slack.REJECT_ACTION):
+            return {}  # e.g. the "Open / edit" link button: nothing to do
+        try:
+            bv = slack.ButtonValue.decode(actions[0]["value"])
+        except (KeyError, ValueError) as e:
+            raise HTTPException(400, "malformed button value") from e
+        uid: str = payload["user"]["id"]
+        response_url = payload.get("response_url")
+
+        def reply(text: str) -> None:
+            background.add_task(_slack_reply, response_url,
+                                {"response_type": "ephemeral", "replace_original": False, "text": text})
+
+        async with tenant_session(engine, bv.tenant_id) as s:
+            ident = (await s.execute(select(SlackIdentity).where(SlackIdentity.slack_user_id == uid))).scalar_one_or_none()
+            if ident is None:
+                s.add(AuditEvent(tenant_id=bv.tenant_id, proposal_id=bv.proposal_id, actor=f"slack:{uid}",
+                                 event="slack_unauthorized", after={"attempted": bv.action}))
+        if ident is None:
+            reply("You are not authorized to decide proposals. Ask an admin to map your Slack user.")
+            return {}
+        who = Principal(f"slack:{uid} ({ident.label or ident.role})", bv.tenant_id, ident.role)
+        target = ProposalState.APPROVED if bv.action == "approve" else ProposalState.REJECTED
+        try:
+            thread_id = await _decide(bv.proposal_id, who, target)
+        except InvalidTransition as e:
+            reply(f"Already decided ({e.current.value}); nothing changed.")
+            return {}
+        except HTTPException:
+            reply("Proposal not found.")
+            return {}
+        await _resume(who, thread_id, "approved" if bv.action == "approve" else "rejected")
+        async with tenant_session(engine, bv.tenant_id) as s:
+            x = await s.get(Proposal, bv.proposal_id)
+            title = f"{x.action_type.replace('_', ' ').title()} · {x.currency} {x.amount:,.2f}" if x else "Proposal"
+        background.add_task(_slack_reply, response_url, slack.decided_message(
+            title, "Approved" if bv.action == "approve" else "Rejected", ident.label or f"<@{uid}>"))
+        return {}
 
     return app
