@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.agent.policy import Decision, evaluate
-from app.auth import Principal, require
+from app.auth import JwksCache, Principal, require
 from app.config import Settings
 from app.db.models import AuditEvent, Proposal, SlackIdentity, TenantIntegration, TenantPolicy, Ticket
 from app.db.session import tenant_session
@@ -93,6 +93,9 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None, http: httpx.A
     app.state.settings = settings
     app.state.rt = rt
     engine: AsyncEngine = rt.engine
+    http_client = http or httpx.AsyncClient()  # shared: Slack posts and JWKS fetches
+    if settings.jwt_jwks_url:
+        app.state.jwks = JwksCache(settings.jwt_jwks_url, http_client)
 
     @app.exception_handler(InvalidTransition)
     async def _409(_: Request, e: InvalidTransition) -> JSONResponse:
@@ -273,8 +276,6 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None, http: httpx.A
                 "avg_approval_latency_s": float(lat) if lat is not None else None}
 
     # ------------------------------------------------------------------ Slack integration
-    http_client = http or httpx.AsyncClient()
-
     @app.get("/integrations")
     async def get_integrations(p: Admin) -> dict[str, Any]:
         async with tenant_session(engine, p.tenant_id) as s:

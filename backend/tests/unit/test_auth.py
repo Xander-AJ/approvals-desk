@@ -60,6 +60,6 @@ def test_refuses_to_start_without_a_real_verification_key(secret: str | None) ->
         create_app(Settings(jwt_secret=secret), SimpleNamespace(engine=None))  # type: ignore[arg-type]
 
 
-def test_jwks_alone_is_enough_for_production() -> None:
-    create_app(Settings(jwt_secret=None, jwt_jwks_url="https://idp/jwks.json"),
+def test_jwks_url_and_audience_are_enough_for_production() -> None:
+    create_app(Settings(jwt_secret=None, jwt_jwks_url="https://idp/jwks.json", jwt_audience="approvals-api"),
                SimpleNamespace(engine=None))  # type: ignore[arg-type]

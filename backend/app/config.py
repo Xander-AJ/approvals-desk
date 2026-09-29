@@ -10,11 +10,12 @@ class Settings(BaseSettings):
 
     jwt_issuer: str = "approvals-desk-dev"
     jwt_jwks_url: str | None = None  # set in prod for RS256 OIDC verification
+    jwt_audience: str | None = None  # required with jwt_jwks_url: tokens minted for other services are refused
     checkpoint_dsn: str = "postgresql://postgres:postgres@localhost:5432/approvals"
     webhook_url: str | None = None
     slack_signing_secret: str | None = None  # enables POST /integrations/slack/interactions
     console_url: str = "http://localhost:3000"  # base URL used for "Open in console" links
-    webhook_secret: str = "dev-webhook-secret"
+    webhook_secret: str | None = None  # signs outbound webhooks; required whenever webhook_url is set
     async_resume: bool = False  # API enqueues resume to the arq worker instead of running it in-process
     llm_provider: str = "fake"  # fake | anthropic
     llm_model: str = "claude-haiku-4-5-20251001"
@@ -28,5 +29,9 @@ class Settings(BaseSettings):
             raise ValueError("dev_auth must not be enabled together with a production JWKS issuer")
         if not self.jwt_jwks_url and (not self.jwt_secret or len(self.jwt_secret) < 32):
             raise ValueError("set AD_JWT_JWKS_URL (production) or an AD_JWT_SECRET of at least 32 characters (dev)")
+        if self.jwt_jwks_url and not self.jwt_audience:
+            raise ValueError("AD_JWT_AUDIENCE is required with AD_JWT_JWKS_URL (refuse tokens meant for other services)")
+        if self.webhook_url and not self.webhook_secret:
+            raise ValueError("AD_WEBHOOK_SECRET is required when AD_WEBHOOK_URL is set (no default signing key)")
 
     model_config = {"env_prefix": "AD_"}

@@ -105,7 +105,7 @@ async def _dispatch(rt: Runtime, settings: Settings, client: httpx.AsyncClient) 
 
 
 async def _send_webhook(client: httpx.AsyncClient, settings: Settings, tid: uuid.UUID, ev: OutboxEvent) -> None:
-    assert settings.webhook_url
+    assert settings.webhook_url and settings.webhook_secret  # Settings.validate_for_runtime enforces the pair
     body = json.dumps({"topic": ev.topic, "tenant_id": str(tid), **ev.payload}).encode()
     r = await client.post(settings.webhook_url, content=body, timeout=5,
                           headers={"X-Event-Id": str(ev.id), "X-Signature": sign(settings.webhook_secret, body),
