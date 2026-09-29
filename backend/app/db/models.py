@@ -121,5 +121,39 @@ class OutboxEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-TENANT_TABLES = ["users", "tenant_policies", "tickets", "proposals", "audit_events", "outbox"]
-__all__ = ["UniqueConstraint"]
+class TenantIntegration(Base):
+    """Per-tenant outbound integration settings. The Slack webhook URL is a bearer secret: never returned in full."""
+
+    __tablename__ = "tenant_integrations"
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    slack_webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    slack_channel_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class SlackIdentity(Base):
+    """Which Slack users may decide proposals for a tenant, and as which role. Channel membership grants nothing."""
+
+    __tablename__ = "slack_identities"
+    __table_args__ = (UniqueConstraint("tenant_id", "slack_user_id"),)
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    slack_user_id: Mapped[str] = mapped_column(String(32))
+    role: Mapped[str] = mapped_column(String(20))  # reviewer | admin
+    label: Mapped[str] = mapped_column(String(200), default="")
+
+
+class OutboxDelivery(Base):
+    """Per-sink delivery ledger so a retry never re-sends to a sink that already succeeded."""
+
+    __tablename__ = "outbox_deliveries"
+    __table_args__ = (UniqueConstraint("event_id", "sink"),)
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    sink: Mapped[str] = mapped_column(String(20))  # webhook | slack
+    delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+V1_TENANT_TABLES = ["users", "tenant_policies", "tickets", "proposals", "audit_events", "outbox"]
+V2_TENANT_TABLES = ["tenant_integrations", "slack_identities", "outbox_deliveries"]
+TENANT_TABLES = V1_TENANT_TABLES + V2_TENANT_TABLES
