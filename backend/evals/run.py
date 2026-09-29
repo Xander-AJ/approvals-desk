@@ -16,11 +16,12 @@ from decimal import Decimal
 from app.agent.fake_llm import FakeLLM
 from app.agent.llm import LLM
 from app.agent.policy import evaluate
-from evals.cases import STANDARD_POLICY, build_cases
+from evals.cases import STANDARD_POLICY, Case, build_cases
+from evals.heldout import build_heldout
 
 
-async def run(llm: LLM | None = None) -> dict[str, float]:
-    llm, cases = llm or FakeLLM(), build_cases()
+async def run(llm: LLM | None = None, cases: list[Case] | None = None) -> dict[str, float]:
+    llm, cases = llm or FakeLLM(), cases if cases is not None else build_cases()
     correct = violations = unnecessary = auto_expected = 0
     failures: list[str] = []
     for c in cases:
@@ -55,6 +56,7 @@ def main() -> None:
     ap.add_argument("--min-accuracy", type=float, default=0.9)
     ap.add_argument("--max-violations", type=float, default=0.0)
     ap.add_argument("--max-unnecessary", type=float, default=0.1)
+    ap.add_argument("--set", choices=["tuned", "heldout", "all"], default="tuned", dest="which")
     ap.add_argument("--provider", choices=["fake", "anthropic"], default="fake")
     ap.add_argument("--model", default="claude-haiku-4-5-20251001")
     ap.add_argument("--fixtures", default="../evals/fixtures")
@@ -69,10 +71,17 @@ def main() -> None:
         from app.agent.anthropic_llm import AnthropicLLM, FixtureStore
 
         llm = AnthropicLLM(AsyncAnthropic(), a.model, fixtures=FixtureStore(Path(a.fixtures), a.mode))  # type: ignore[arg-type]
-    m = asyncio.run(run(llm))
-    print(json.dumps(m, indent=2))
-    if (m["proposal_accuracy"] < a.min_accuracy or m["policy_violation_rate"] > a.max_violations
-            or m["unnecessary_escalation_rate"] > a.max_unnecessary):
+    sets = {"tuned": build_cases, "heldout": build_heldout}
+    names = list(sets) if a.which == "all" else [a.which]
+    failed = False
+    out: dict[str, dict[str, float]] = {}
+    for name in names:
+        m = asyncio.run(run(llm, sets[name]()))
+        out[name] = m
+        failed |= (m["proposal_accuracy"] < a.min_accuracy or m["policy_violation_rate"] > a.max_violations
+                   or m["unnecessary_escalation_rate"] > a.max_unnecessary)
+    print(json.dumps(out if a.which == "all" else out[names[0]], indent=2))
+    if failed:
         sys.exit(1)
 
 
