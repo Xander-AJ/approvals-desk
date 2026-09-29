@@ -55,6 +55,11 @@ variable "console_url" {
   description = "Public URL of the web console, used for 'Open / edit' links in Slack messages."
 }
 variable "jwt_issuer" { type = string }
+variable "jwt_audience" {
+  type        = string
+  default     = "approvals-api"
+  description = "Required `aud` claim on API tokens; the web app mints tokens for this audience."
+}
 variable "jwt_jwks_url" {
   type        = string
   description = "OIDC provider JWKS URL; tokens are verified with RS256. dev_auth is never enabled here."

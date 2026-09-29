@@ -61,6 +61,7 @@ locals {
     { name = "AD_SANDBOX_URL", value = "http://sandbox.${var.name}.local:8001" },
     { name = "AD_JWT_ISSUER", value = var.jwt_issuer },
     { name = "AD_JWT_JWKS_URL", value = var.jwt_jwks_url },
+    { name = "AD_JWT_AUDIENCE", value = var.jwt_audience },
     { name = "AD_DEV_AUTH", value = "false" },
     { name = "AD_CONSOLE_URL", value = var.console_url },
     { name = "AD_LLM_PROVIDER", value = var.llm_provider },
