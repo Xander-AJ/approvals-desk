@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from decimal import Decimal
+from typing import Any
 
 import httpx
 from sqlalchemy import text
@@ -16,6 +17,19 @@ TENANTS = {
     uuid.UUID("11111111-1111-1111-1111-111111111111"): ("Mzigo Wallet", Decimal("500")),
     uuid.UUID("22222222-2222-2222-2222-222222222222"): ("Duka Marketplace", Decimal("0")),
 }
+
+
+async def _post_with_retry(sb: httpx.AsyncClient, path: str, body: dict[str, Any], attempts: int = 20) -> None:
+    """The sandbox may still be booting on a PaaS: retry connection errors only. A 4xx/5xx (bad key, bad request) is
+    a real failure and must not be reported as 'seeded'."""
+    for n in range(1, attempts + 1):
+        try:
+            (await sb.post(path, json=body)).raise_for_status()
+            return
+        except httpx.TransportError:
+            if n == attempts:
+                raise
+            await asyncio.sleep(3)
 
 
 async def main() -> None:
@@ -35,10 +49,11 @@ async def main() -> None:
             base_url=s.sandbox_url,
             headers={"X-Sandbox-Key": s.sandbox_api_key} if s.sandbox_api_key else {}) as sb:
         for acct in ("wanjiku", "otieno"):
-            await sb.post("/dev/seed", json={"account_id": acct, "balance": "0", "txns": [
+            body = {"account_id": acct, "balance": "0", "txns": [
                 {"id": f"{acct}-c1", "amount": "1200", "merchant": "Java House"},
                 {"id": f"{acct}-c2", "amount": "1200", "merchant": "Java House"},
-                {"id": f"{acct}-c3", "amount": "350", "merchant": "Naivas"}]})
+                {"id": f"{acct}-c3", "amount": "350", "merchant": "Naivas"}]}
+            await _post_with_retry(sb, "/dev/seed", body)
     print("seeded tenants:", ", ".join(f"{n}={t}" for t, (n, _) in TENANTS.items()))
 
 

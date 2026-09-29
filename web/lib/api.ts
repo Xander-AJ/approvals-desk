@@ -121,5 +121,6 @@ export async function api<T>(
   return schema.parse(await res.json());
 }
 
-export const JAEGER = process.env.NEXT_PUBLIC_JAEGER_URL ?? "http://localhost:16686";
-export const traceUrl = (id: string | null) => (id ? `${JAEGER}/trace/${id}` : null);
+/** Trace links are shown only when a Jaeger/Tempo UI is configured; a deployment without one gets no dead links. */
+export const JAEGER = (process.env.NEXT_PUBLIC_JAEGER_URL ?? "").replace(/\/$/, "");
+export const traceUrl = (id: string | null) => (id && JAEGER ? `${JAEGER}/trace/${id}` : null);

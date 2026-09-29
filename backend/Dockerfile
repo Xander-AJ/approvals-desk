@@ -8,4 +8,4 @@ COPY backend/ .
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONPATH=/app
 RUN useradd -m app && chown -R app /app
 USER app
-CMD ["uvicorn", "app.entrypoint:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "scripts/serve.sh"]

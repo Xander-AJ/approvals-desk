@@ -16,6 +16,7 @@ export default defineConfig({
       API_URL: process.env.API_URL ?? "http://localhost:8000",
       // OIDC is the default; the e2e suite drives the dev issuer (local compose only, never deployed).
       NEXT_PUBLIC_AUTH_MODE: "dev",
+      NEXT_PUBLIC_JAEGER_URL: "http://localhost:16686",
       AUTH_SECRET: "e2e-only-not-a-real-secret",
     },
   },
