@@ -24,3 +24,10 @@ class HttpSandbox:
         r.raise_for_status()
         out: dict[str, Any] = r.json()
         return out
+
+    async def compensate(self, account_id: str, amount: Decimal, reference_txn: str, key: str) -> dict[str, Any]:
+        r = await self.c.post("/compensations", headers={"Idempotency-Key": key},
+                              json={"account_id": account_id, "amount": str(amount), "reference_txn": reference_txn})
+        r.raise_for_status()
+        out: dict[str, Any] = r.json()
+        return out

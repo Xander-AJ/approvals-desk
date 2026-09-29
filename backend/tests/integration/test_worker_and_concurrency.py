@@ -29,11 +29,24 @@ class StubSandbox:
         self.fail_context = False
         self.fail_mutate = False
         self.charges = ["1200", "1200"]
+        self.comp_by_key: dict[str, dict[str, Any]] = {}
+        self.comp_effects: list[str] = []  # references actually compensated (the real-world effect)
+        self.comp_lose_response_once = False
 
     async def get_context(self, account_id: str) -> dict[str, Any]:
         if self.fail_context:
             raise httpx.ConnectError("sandbox unreachable")
         return {"transactions": [{"id": f"t{i}", "amount": a, "kind": "charge"} for i, a in enumerate(self.charges)]}
+
+    async def compensate(self, account_id: str, amount: Decimal, reference_txn: str, key: str) -> dict[str, Any]:
+        await asyncio.sleep(0.05)
+        if key not in self.comp_by_key:  # idempotent by key, like the real sandbox
+            self.comp_effects.append(reference_txn)
+            self.comp_by_key[key] = {"txn_id": f"comp{len(self.comp_effects)}", "reference_txn": reference_txn}
+        if self.comp_lose_response_once:  # effect applied, but the caller never learns it
+            self.comp_lose_response_once = False
+            raise httpx.ReadTimeout("response lost")
+        return self.comp_by_key[key]
 
     async def mutate(self, action_type: str, account_id: str, amount: Decimal, key: str) -> dict[str, Any]:
         await asyncio.sleep(0.05)  # widen the race window for the concurrency test
@@ -213,3 +226,80 @@ async def test_prompt_delimiter_tampering_forces_review_even_for_a_verified_dupl
     finally:
         world["sb"].charges = ["1200", "1200"]
     assert r.json()["decision"] == "review" and len(world["sb"].calls) == calls
+
+
+async def _executed(world) -> str:  # type: ignore[no-untyped-def]
+    pid = await world["new"]()
+    assert (await world["api"].post(f"/proposals/{pid}/approve", headers=world["h"]("reviewer"))).status_code == 200
+    return pid
+
+
+async def test_admin_compensates_an_executed_refund_once_with_audit_and_outbox(world) -> None:  # type: ignore[no-untyped-def]
+    pid = await _executed(world)
+    api, h = world["api"], world["h"]
+    effects = len(world["sb"].comp_effects)
+    assert (await api.post(f"/proposals/{pid}/compensate", json={"reason": "issued in error"}, headers=h("reviewer"))).status_code == 403
+    assert (await api.post(f"/proposals/{pid}/compensate", json={"reason": "no"}, headers=h("admin"))).status_code == 422
+    r = await api.post(f"/proposals/{pid}/compensate", json={"reason": "issued in error, customer was not owed"}, headers=h("admin"))
+    assert r.status_code == 200, r.text
+    d = (await api.get(f"/proposals/{pid}", headers=h("reviewer"))).json()
+    assert d["state"] == "compensated"
+    assert d["result"]["compensation"]["reference_txn"] == d["result"]["txn_id"]
+    assert d["result"]["compensation_reason"] == "issued in error, customer was not owed"
+    assert [a["event"] for a in d["audit"]][-2:] == ["executed", "compensated"]
+    assert d["audit"][-1]["actor"] == "admin"
+    assert len(world["sb"].comp_effects) == effects + 1
+    async with tenant_session(world["engine"], world["tenant"]) as s:
+        ev = (await s.execute(select(OutboxEvent).where(OutboxEvent.topic == "proposal.compensated"))).scalars().all()
+        assert any(e.payload["proposal_id"] == pid for e in ev)
+    # compensated is terminal: a second attempt is a 409 and does nothing
+    assert (await api.post(f"/proposals/{pid}/compensate", json={"reason": "again please"}, headers=h("admin"))).status_code == 409
+    assert len(world["sb"].comp_effects) == effects + 1
+
+
+async def test_only_executed_proposals_can_be_compensated(world) -> None:  # type: ignore[no-untyped-def]
+    api, h = world["api"], world["h"]
+    pending = await world["new"]()
+    rejected = await world["new"]()
+    await api.post(f"/proposals/{rejected}/reject", headers=h("reviewer"))
+    effects = len(world["sb"].comp_effects)
+    for pid in (pending, rejected):
+        r = await api.post(f"/proposals/{pid}/compensate", json={"reason": "should not work"}, headers=h("admin"))
+        assert r.status_code == 409, (pid, r.text)
+    assert (await api.post(f"/proposals/{uuid.uuid4()}/compensate", json={"reason": "not there"}, headers=h("admin"))).status_code == 404
+    assert len(world["sb"].comp_effects) == effects
+
+
+async def test_lost_response_leaves_the_proposal_executed_and_retry_compensates_exactly_once(world) -> None:  # type: ignore[no-untyped-def]
+    pid = await _executed(world)
+    api, h = world["api"], world["h"]
+    effects = len(world["sb"].comp_effects)
+    world["sb"].comp_lose_response_once = True
+    r = await api.post(f"/proposals/{pid}/compensate", json={"reason": "issued in error"}, headers=h("admin"))
+    assert r.status_code == 502 and "retry is safe" in r.text
+    assert len(world["sb"].comp_effects) == effects + 1  # money moved...
+    assert (await api.get(f"/proposals/{pid}", headers=h("reviewer"))).json()["state"] == "executed"  # ...unrecorded
+    r = await api.post(f"/proposals/{pid}/compensate", json={"reason": "issued in error"}, headers=h("admin"))
+    assert r.status_code == 200, r.text
+    assert (await api.get(f"/proposals/{pid}", headers=h("reviewer"))).json()["state"] == "compensated"
+    assert len(world["sb"].comp_effects) == effects + 1  # still exactly one clawback
+
+
+async def test_concurrent_compensations_record_one_transition_and_one_clawback(world) -> None:  # type: ignore[no-untyped-def]
+    pid = await _executed(world)
+    api, h = world["api"], world["h"]
+    effects = len(world["sb"].comp_effects)
+    rs = await asyncio.gather(*[api.post(f"/proposals/{pid}/compensate", json={"reason": "issued in error"}, headers=h("admin"))
+                                for _ in range(4)])
+    assert sorted(r.status_code for r in rs).count(200) >= 1 and all(r.status_code in (200, 409) for r in rs)
+    assert len(world["sb"].comp_effects) == effects + 1
+    d = (await api.get(f"/proposals/{pid}", headers=h("reviewer"))).json()
+    assert [a["event"] for a in d["audit"]].count("compensated") == 1
+
+
+async def test_compensation_is_tenant_scoped(world) -> None:  # type: ignore[no-untyped-def]
+    pid = await _executed(world)
+    other = {"Authorization": f"Bearer {mint_token(world['settings'], 'admin', uuid.uuid4(), 'admin')}"}
+    effects = len(world["sb"].comp_effects)
+    assert (await world["api"].post(f"/proposals/{pid}/compensate", json={"reason": "not my tenant"}, headers=other)).status_code == 404
+    assert len(world["sb"].comp_effects) == effects

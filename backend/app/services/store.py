@@ -38,7 +38,8 @@ def apply_transition(s: AsyncSession, p: Proposal, target: ProposalState, actor:
                           payload={"proposal_id": str(p.id), "state": target.value,
                                    "proposal": {**snap(p), "evidence": p.evidence,
                                                 "expires_at": p.expires_at.isoformat() if p.expires_at else None}}))
-    if target in (ProposalState.EXECUTED, ProposalState.FAILED, ProposalState.REJECTED, ProposalState.EXPIRED):
+    if target in (ProposalState.EXECUTED, ProposalState.FAILED, ProposalState.REJECTED, ProposalState.EXPIRED,
+                  ProposalState.COMPENSATED):
         s.add(OutboxEvent(tenant_id=p.tenant_id, topic=f"proposal.{target.value}",
                           payload={"proposal_id": str(p.id), "state": target.value, "result": result}))
 

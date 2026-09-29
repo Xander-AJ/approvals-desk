@@ -22,6 +22,7 @@ from app.db.models import AuditEvent, Proposal, SlackIdentity, TenantIntegration
 from app.db.session import tenant_session
 from app.domain.state_machine import InvalidTransition, ProposalState
 from app.integrations import slack
+from app.services import compensation
 from app.services.runs import Runtime
 from app.services.store import Store, apply_transition, snap
 
@@ -55,6 +56,10 @@ class DevTokenIn(BaseModel):
     tenant_id: uuid.UUID
     role: str
     user: str
+
+
+class CompensateIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
 
 
 class SlackConfigIn(BaseModel):
@@ -205,6 +210,18 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None, http: httpx.A
         th = await _decide(pid, p, ProposalState.EDITED, body)
         await _resume(p, th, "edited")
         return {"status": "ok"}
+
+    @app.post("/proposals/{pid}/compensate")
+    async def compensate(pid: uuid.UUID, body: CompensateIn, p: Admin) -> dict[str, Any]:
+        """Undo an executed refund/reversal/fee waiver. Admin only; needs a reason; audited; at most once."""
+        try:
+            result = await compensation.compensate(rt, p.tenant_id, pid, p.user, body.reason)
+        except compensation.NotFound:
+            raise HTTPException(404) from None
+        except (httpx.HTTPError, ValueError) as e:
+            log.exception("compensation failed for proposal %s", pid)
+            raise HTTPException(502, f"payments provider error ({type(e).__name__}); nothing was recorded, retry is safe") from e
+        return {"status": "ok", "compensation": result}
 
     @app.post("/proposals/bulk")
     async def bulk(body: BulkIn, p: Reviewer) -> dict[str, Any]:
