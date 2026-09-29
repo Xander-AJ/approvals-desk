@@ -249,3 +249,20 @@ test("a signed Slack click from a mapped reviewer executes the refund; forged an
   await page.getByRole("button", { name: "Remove U0E2ECLICK" }).click();
   await expect(page.getByRole("cell", { name: "U0E2ECLICK", exact: true })).toHaveCount(0);
 });
+
+// ---------------------------------------------------------------- routing regression
+test("Next serves its own /api/auth and /api/api-token routes; everything else is proxied to the API", async ({ request }) => {
+  // Auth.js lives in a dynamic catch-all. A proxy rewrite that runs before dynamic routes would forward these to the
+  // backend (FastAPI answers {"detail":"Not Found"}). This regressed once and only showed up on the live deploy.
+  const providers = await request.get("/api/auth/providers");
+  expect(providers.status()).toBe(200);
+  expect(await providers.json()).toHaveProperty("github");
+  expect((await (await request.get("/api/auth/csrf")).json()).csrfToken).toBeTruthy();
+  expect((await request.get("/api/memberships")).status()).toBe(401); // our route, not the backend's 404
+  expect((await request.post("/api/api-token", { data: {} })).status()).toBe(401);
+
+  // ...and the proxy still reaches the backend for everything Next does not own.
+  const health = await request.get("/api/healthz");
+  expect(health.status()).toBe(200);
+  expect(await health.json()).toEqual({ status: "ok" });
+});
