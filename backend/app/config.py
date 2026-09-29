@@ -5,7 +5,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://app_user:app_user@localhost:5432/approvals"
     sandbox_url: str = "http://localhost:8001"
     redis_url: str = "redis://localhost:6379"
-    jwt_secret: str = "dev-secret-change-me-0123456789abcdef-long"
+    jwt_secret: str | None = None  # HS256 (dev issuer only); production uses jwt_jwks_url
+
     jwt_issuer: str = "approvals-desk-dev"
     jwt_jwks_url: str | None = None  # set in prod for RS256 OIDC verification
     checkpoint_dsn: str = "postgresql://postgres:postgres@localhost:5432/approvals"
@@ -22,5 +23,7 @@ class Settings(BaseSettings):
     def validate_for_runtime(self) -> None:
         if self.dev_auth and self.jwt_jwks_url:
             raise ValueError("dev_auth must not be enabled together with a production JWKS issuer")
+        if not self.jwt_jwks_url and (not self.jwt_secret or len(self.jwt_secret) < 32):
+            raise ValueError("set AD_JWT_JWKS_URL (production) or an AD_JWT_SECRET of at least 32 characters (dev)")
 
     model_config = {"env_prefix": "AD_"}

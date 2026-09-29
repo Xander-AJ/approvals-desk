@@ -20,6 +20,7 @@ class Principal:
 
 def mint_token(settings: Settings, user: str, tenant_id: uuid.UUID, role: str) -> str:
     """Dev issuer only. Production tokens come from the OIDC provider."""
+    assert settings.jwt_secret, "jwt_secret required to mint dev tokens"
     return jwt.encode({"sub": user, "tenant_id": str(tenant_id), "role": role, "iss": settings.jwt_issuer,
                        "exp": int(time.time()) + 3600},
                       settings.jwt_secret, algorithm="HS256")
@@ -30,6 +31,7 @@ def _decode(settings: Settings, token: str) -> dict[str, object]:
         key = jwt.PyJWKClient(settings.jwt_jwks_url).get_signing_key_from_jwt(token).key
         return jwt.decode(token, key, algorithms=["RS256"], issuer=settings.jwt_issuer,
                           options={"require": ["exp", "sub"]})
+    assert settings.jwt_secret
     return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"], issuer=settings.jwt_issuer,
                       options={"require": ["exp", "sub"]})
 

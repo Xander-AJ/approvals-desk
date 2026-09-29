@@ -10,7 +10,7 @@ from app.api.main import create_app
 from app.auth import mint_token
 from app.config import Settings
 
-S = Settings()
+S = Settings()  # jwt_secret comes from tests/conftest.py
 TENANT = uuid.uuid4()
 
 
@@ -52,3 +52,14 @@ def test_dev_auth_with_jwks_is_refused() -> None:
     with pytest.raises(ValueError):
         create_app(Settings(dev_auth=True, jwt_jwks_url="https://idp/.well-known/jwks.json"),
                    SimpleNamespace(engine=None))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("secret", [None, "short"])
+def test_refuses_to_start_without_a_real_verification_key(secret: str | None) -> None:
+    with pytest.raises(ValueError, match="JWKS"):
+        create_app(Settings(jwt_secret=secret), SimpleNamespace(engine=None))  # type: ignore[arg-type]
+
+
+def test_jwks_alone_is_enough_for_production() -> None:
+    create_app(Settings(jwt_secret=None, jwt_jwks_url="https://idp/jwks.json"),
+               SimpleNamespace(engine=None))  # type: ignore[arg-type]

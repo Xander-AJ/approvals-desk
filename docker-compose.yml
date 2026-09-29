@@ -36,6 +36,7 @@ services:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/approvals
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       AD_DEV_AUTH: "true"
+      AD_JWT_SECRET: compose-dev-only-secret-0123456789-abcdef
       AD_ASYNC_RESUME: "true"
     depends_on:
       migrate: { condition: service_completed_successfully }
