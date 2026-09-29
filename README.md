@@ -86,6 +86,12 @@ cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the 
   the compose stack, Docker builds, Trivy (HIGH/CRITICAL). All six jobs pass on GitHub-hosted runners (the first run
   caught a nonexistent Trivy action tag and, earlier, a `tsc` failure that only appeared on a clean checkout).
 
+## Live deployment
+
+Web on Vercel (`https://approvals-desk.vercel.app`) with GitHub sign-in restricted to an allowlist; backend on Railway
+(API, worker, sandbox, Postgres, Redis). It is a **demo**: fake payments sandbox, rule-based stand-in for the LLM.
+Architecture, variables, and operations: [`docs/deploy.md`](docs/deploy.md).
+
 ## Infrastructure
 
 `infra/` is Terraform for AWS: VPC, RDS Postgres 16 (Multi-AZ, encrypted), ElastiCache Redis, ECS Fargate
