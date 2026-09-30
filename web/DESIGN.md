@@ -11,3 +11,4 @@ Direction: dense ops console, "ledger" palette (cool paper, ink, one deep-green 
 - e2e depends on: `data-testid="state-badge"`, button names (Approve, Edit amount, Reject, ...), and `ol` for the
   audit timeline. Change them together with `e2e/approvals.spec.ts`.
 
+
