@@ -132,6 +132,14 @@ pushes the images to ECR, and shows a plan. Nothing billable is created until yo
 `terraform fmt`/`validate` on every push. The stack is still unapplied; the `aws-deploy` workflow and
 `teardown.sh` are likewise untested against a real account.
 
+## Project status
+
+Complete and verified: the API, agent, policy, state machine, RLS, outbox, Slack approvals, compensation, evals, the
+console, CI, and the live Vercel + Railway demo. **Not verified: the AWS/Terraform deployment**, which needs an AWS
+account the maintainer did not have. It is validated (`terraform validate`, checkov) but never applied. If you run it
+with your own account, [`infra/README.md`](infra/README.md#what-it-works-looks-like-acceptance-checklist) lists the
+outcome to expect at each step; please report any deviation.
+
 ## Decisions
 
 `docs/adr/`: checkpointer vs Temporal, RLS vs schema-per-tenant, single-side-effect execute node, outbox and arq,
