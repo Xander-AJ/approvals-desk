@@ -1,4 +1,6 @@
 FROM python:3.12-slim
+# Pull in Debian security fixes newer than the base image (Trivy gates CI on fixable HIGH/CRITICAL).
+RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0.36" asyncpg pydantic opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi
 WORKDIR /app
 COPY sandbox/pesa ./pesa

@@ -1,4 +1,6 @@
 FROM python:3.12-slim
+# Pull in Debian security fixes newer than the base image (Trivy gates CI on fixable HIGH/CRITICAL).
+RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /bin/uv
 WORKDIR /app
 ENV UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/local/bin/python UV_LINK_MODE=copy
