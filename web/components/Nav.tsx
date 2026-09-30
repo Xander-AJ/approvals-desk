@@ -43,7 +43,7 @@ export function Nav() {
         <span className="font-semibold tracking-tight">approvals-desk</span>
       </Link>
       <nav aria-label="Main" className="flex gap-1 overflow-x-auto md:flex-col">
-        {links.map(({ href, label, icon: Icon }) => {
+        {s && links.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? path === "/" || path.startsWith("/proposals") : path === href;
           return (
             <Link

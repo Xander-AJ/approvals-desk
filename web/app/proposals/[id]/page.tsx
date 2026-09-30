@@ -36,12 +36,12 @@ function Stepper({ state }: { state: string }) {
   const at = stepIndex(state);
   const last = state === "compensated" ? "compensated" : state === "failed" ? "failed" : "executed";
   return (
-    <div aria-hidden className="flex items-center gap-2 text-xs">
+    <div aria-hidden className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
       {STEPS.map((label, i) => (
-        <div key={label} className="flex items-center gap-2">
+        <div key={label} className="flex items-center gap-2 whitespace-nowrap">
           <span className={`size-2 rounded-full ${i <= at ? "bg-accent" : "bg-line"}`} />
           <span className={i <= at ? "text-ink" : "text-muted"}>{i === 3 ? last : i === 2 && at === 2 ? state.replace("_", " ") : label}</span>
-          {i < STEPS.length - 1 && <span className={`h-px w-6 ${i < at ? "bg-accent" : "bg-line"}`} />}
+          {i < STEPS.length - 1 && <span className={`hidden h-px w-6 sm:block ${i < at ? "bg-accent" : "bg-line"}`} />}
         </div>
       ))}
     </div>
