@@ -115,3 +115,14 @@ jobs:
               ...context.repo, issue_number: context.issue.number,
               body: `Web preview: ${process.env.URL}`,
             });
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: infra } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false && terraform validate
+      - run: cd bootstrap && terraform init -backend=false -input=false && terraform validate
