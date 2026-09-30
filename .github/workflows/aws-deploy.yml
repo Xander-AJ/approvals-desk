@@ -1,0 +1,41 @@
+name: aws-deploy
+# Manual only. Needs: secret AWS_ROLE_ARN, variables AWS_REGION and TFVARS (contents of terraform.tfvars).
+# The `production` environment should require a reviewer so `apply` cannot run unattended.
+on:
+  workflow_dispatch:
+    inputs:
+      action: { type: choice, options: [plan, apply], default: plan }
+
+permissions: { id-token: write, contents: read }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: infra } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - name: Write tfvars and backend config
+        run: |
+          printf '%s\n' '${{ vars.TFVARS }}' > terraform.tfvars
+          BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name,'approvals-desk-tfstate-')].Name | [0]" --output text)
+          printf 'bucket = "%s"\nkey = "approvals-desk/terraform.tfstate"\nregion = "%s"\ndynamodb_table = "approvals-desk-tflock"\nencrypt = true\n' "$BUCKET" "${{ vars.AWS_REGION }}" > backend.hcl
+      - run: terraform init -input=false -backend-config=backend.hcl
+      - name: Create ECR, build and push images
+        if: inputs.action == 'apply'
+        run: |
+          terraform apply -input=false -auto-approve -target=aws_ecr_repository.api -target=aws_ecr_repository.sandbox -var api_image=x -var sandbox_image=x
+          API=$(terraform output -raw ecr_api_repository); SBX=$(terraform output -raw ecr_sandbox_repository)
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${API%%/*}"
+          docker build -f ../backend/Dockerfile -t "$API:$GITHUB_SHA" .. && docker push "$API:$GITHUB_SHA"
+          docker build -f ../sandbox/Dockerfile -t "$SBX:$GITHUB_SHA" .. && docker push "$SBX:$GITHUB_SHA"
+          echo "TF_VAR_api_image=$API:$GITHUB_SHA" >> "$GITHUB_ENV"; echo "TF_VAR_sandbox_image=$SBX:$GITHUB_SHA" >> "$GITHUB_ENV"
+      - run: terraform plan -input=false -out=tfplan
+      - if: inputs.action == 'apply'
+        run: terraform apply -input=false tfplan
