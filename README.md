@@ -36,10 +36,10 @@ cd web && npm ci && API_URL=http://localhost:8000 npm run dev    # http://localh
 
 Sign in at `/login` (dev issuer, enabled only by `AD_DEV_AUTH=true`): pick a tenant and a role
 (`agent` creates tickets, `reviewer` decides, `admin` edits policy).
-Jaeger: http://localhost:16686 · Sandbox ledger:
+Jaeger: http://localhost:16686 · Pesa Ledger:
 `curl -H 'X-Sandbox-Key: compose-dev-sandbox-key-0123456789' localhost:8001/ledger`
 
-## 60-second demo
+## 60-second walkthrough
 
 1. **/chat** as *agent*: send `nimekatwa mara mbili KES 1,200 Java House` (Sheng-flavoured "I was charged twice").
    The agent drafts a KES 1,200 refund citing both ledger charges; it lands in the inbox as *pending review*.
@@ -59,13 +59,13 @@ the restarted worker replays it with the same idempotency key, and the ledger st
 
 | Property | Mechanism | Proof |
 |---|---|---|
-| Exactly-once side effect | Own graph node + idempotency key; sandbox stores key → result | `tests/integration/test_chaos.py` (kill after the sandbox accepted the refund, before it was recorded), the compose demo above |
+| Exactly-once side effect | Own graph node + idempotency key; sandbox stores key → result | `tests/integration/test_chaos.py` (kill after the sandbox accepted the refund, before it was recorded), the compose walkthrough above |
 | Legal transitions only | Table-driven state machine in one module; invalid → HTTP 409 | Hypothesis stateful test; concurrent-approval test (4 requests → 1×200, 3×409, 1 refund) |
 | Tenant isolation | Postgres RLS (`ENABLE`+`FORCE`), runtime role `NOBYPASSRLS`, fail-closed when unset | `test_rls.py` on real Postgres: cross-tenant read/write blocked |
 | Auditability | `audit_events` append-only (revoked + trigger), before/after + `trace_id`, same txn as the change | RLS test; API flow asserts event order |
 | At-least-once webhooks | Transactional outbox, `SKIP LOCKED`, HMAC signature, `X-Event-Id` for dedupe | `test_worker_and_concurrency.py` |
 | SLA expiry | Worker expires stale `pending_review`, never executes, late approve → 409 | same file |
-| Durable resume | LangGraph Postgres checkpointer + worker startup recovery | chaos test, compose demo |
+| Durable resume | LangGraph Postgres checkpointer + worker startup recovery | chaos test, compose walkthrough |
 | RBAC + JWT | agent / reviewer / admin; JWTs require `exp`; RS256 via JWKS in prod | `tests/unit/test_auth.py`, Playwright role tests |
 | Slack approvals are not a back door | Signed requests (5-min window), Slack user must be mapped to a role, same domain path as the console, escaped text, Slack-only URLs | `test_slack.py`, `test_slack.py` unit (Slack's own signature vector), Playwright signed-click test against the live stack |
 | Compensation happens once | Deterministic idempotency key, provider call outside the DB txn, provider refuses a second undo of the same transaction | `test_worker_and_concurrency.py` (lost response then retry, 4-way concurrency), sandbox tests, Playwright |
@@ -100,7 +100,7 @@ secrets: [`docs/deploy.md`](docs/deploy.md#pr-previews).
 ## Live deployment
 
 Web on Vercel (`https://approvals-desk.vercel.app`) with GitHub sign-in restricted to an allowlist; backend on Railway
-(API, worker, sandbox, Postgres, Redis). It is a **demo**: fake payments sandbox, rule-based stand-in for the LLM.
+(API, worker, sandbox, Postgres, Redis). It is a real, running system with real auth, RLS, queues and tracing hooks. Two integrations are simulated and disclosed as such: payments go through Pesa Ledger, a payment-provider simulator (no real funds move; a real PSP is an adapter behind the same idempotent interface), and the agent uses a rule-based model unless `AD_LLM_PROVIDER=anthropic` is set with an API key.
 Architecture, variables, and operations: [`docs/deploy.md`](docs/deploy.md).
 
 ## Infrastructure
@@ -112,7 +112,7 @@ deploy. The frontend is meant for Vercel with `API_URL` pointing at the ALB.
 
 A checkov pass is clean apart from documented exceptions in `infra/.checkov.yaml` (customer-managed KMS keys, secret
 rotation, WAF, ALB access logs). HTTPS is mandatory (`certificate_arn` is required), Redis uses TLS with an auth token,
-and there is one NAT per AZ by default. Known gaps: the Pesa Sandbox is a fake (shared-key auth only) and shares the RDS
+and there is one NAT per AZ by default. Known gaps: the Pesa Ledger payment simulator uses shared-key auth only and shares the RDS
 instance; the S3 state backend is declared but you must supply its `-backend-config`.
 
 See [`infra/README.md`](infra/README.md) for costs, the GitHub Actions path (`aws-deploy`), and teardown.
@@ -135,8 +135,8 @@ pushes the images to ECR, and shows a plan. Nothing billable is created until yo
 ## Project status
 
 Complete and verified: the API, agent, policy, state machine, RLS, outbox, Slack approvals, compensation, evals, the
-console, CI, and the live Vercel + Railway demo. **Not verified: the AWS/Terraform deployment**, which needs an AWS
-account the maintainer did not have. It is validated (`terraform validate`, checkov) but never applied. If you run it
+console, CI, and the live Vercel + Railway deployment. **Not verified: the AWS/Terraform deployment**, which needs an AWS
+account, because each user is expected to deploy with their own AWS credentials and account (the maintainer's credentials are never shared). It is validated (`terraform validate`, checkov) but never applied. If you run it
 with your own account, [`infra/README.md`](infra/README.md#what-it-works-looks-like-acceptance-checklist) lists the
 outcome to expect at each step; please report any deviation.
 
@@ -164,4 +164,4 @@ debited again through the provider's idempotent compensation endpoint, and the p
 ## Scope
 
 One channel (chat simulator) plus Slack approvals, three action types, one LLM provider. Not built: a WhatsApp
-channel, email approvals, reconciliation against a provider ledger, a real payments provider (Pesa Sandbox is a fake).
+channel, email approvals, reconciliation against a provider ledger, a real payments provider (Pesa Ledger simulates one).

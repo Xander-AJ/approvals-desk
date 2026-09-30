@@ -57,4 +57,4 @@ services:
     <<: *backend
     command: ["arq", "app.worker.WorkerSettings"]
     ports: []
-    restart: unless-stopped   # `docker kill` it live in the demo; it resumes runs from the checkpointer on start
+    restart: unless-stopped   # `docker kill` it live in the walkthrough; it resumes runs from the checkpointer on start

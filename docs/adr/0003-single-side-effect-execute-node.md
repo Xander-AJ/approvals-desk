@@ -7,7 +7,7 @@ LangGraph checkpoints once per node. If a node makes several tool calls and dies
 
 ## Decision
 - `execute_action` is its own node and performs exactly one mutating call.
-- That call carries `Idempotency-Key = sha256(thread_id:proposal_id:version)`; Pesa Sandbox stores the key and returns the original result on replay.
+- That call carries `Idempotency-Key = sha256(thread_id:proposal_id:version)`; Pesa Ledger stores the key and returns the original result on replay.
 - A human edit bumps `version`, so an edited amount is a distinct, deliberate action; a replay of the same version is not.
 - The domain state change (`executed`/`failed`) is recorded after the call and is itself replay-safe (`mark` returns early if already in that state).
 - Outbound webhooks go through a transactional outbox written in the same transaction as the state change; delivery is at-least-once with `X-Event-Id` for receiver dedupe.

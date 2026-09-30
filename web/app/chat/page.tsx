@@ -42,7 +42,7 @@ export default function ChatPage() {
 
   return (
     <>
-      <PageHeader title="Chat simulator" sub="The single channel: a customer message becomes a ticket and the agent drafts a proposal. Sign in as agent to send." />
+      <PageHeader title="Customer chat" sub="The single channel: a customer message becomes a ticket and the agent drafts a proposal. Sign in as agent to send." />
       <div className="mx-auto flex h-[70vh] max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-surface">
         <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
           <span aria-hidden className="grid size-8 place-items-center rounded-full bg-sunken text-sm font-medium uppercase">{customer[0]}</span>

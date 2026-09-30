@@ -11,7 +11,7 @@ import { useSession } from "@/lib/useSession";
 
 const LINKS = [
   { href: "/", label: "Inbox", icon: Inbox },
-  { href: "/chat", label: "Chat simulator", icon: MessageSquare },
+  { href: "/chat", label: "Customer chat", icon: MessageSquare },
   { href: "/policy", label: "Policy", icon: SlidersHorizontal },
   { href: "/metrics", label: "Metrics", icon: BarChart3 },
 ];

@@ -136,7 +136,7 @@ export default function InboxPage() {
                 </tr>
               ))}
               {!proposals.isLoading && rows.length === 0 && (
-                <tr><td colSpan={8}><EmptyState title="Nothing here" hint="Change the filters, or send a customer message from the Chat simulator." /></td></tr>
+                <tr><td colSpan={8}><EmptyState title="Nothing here" hint="Change the filters, or send a customer message from the Customer chat." /></td></tr>
               )}
             </tbody>
           </table>

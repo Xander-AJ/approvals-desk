@@ -27,7 +27,7 @@ the first run and please open an issue with the error.
 ## What "it works" looks like (acceptance checklist)
 
 The application itself is verified: 153 backend tests, 11 Playwright tests, evals and CI are green, and the same images
-run on Railway. The AWS deployment is the one thing **not verified**, because the maintainer had no AWS account. If you
+run on Railway. The AWS deployment is the one thing **not verified**, because each user is expected to deploy with their own AWS credentials and account; the maintainer's credentials are never shared. If you
 run it with your own account, this is the outcome to expect. Any deviation is a bug in the Terraform, and we'd like a
 report (open an issue with the command, the error, and `terraform version`).
 
@@ -39,10 +39,10 @@ report (open an issue with the command, the error, and `terraform version`).
 | 4 | Run the `migrate` task once (`aws ecs run-task`, see `outputs.tf`) | Task exits with code 0; the schema, forced RLS and the `app_user` role exist |
 | 5 | Point DNS at the ALB, then `curl https://<your-api-domain>/healthz` | HTTP 200. ECS shows `api`, `worker`, `sandbox` each with running count == desired |
 | 6 | `curl` any API route without a token | HTTP 401 (JWT required; there is no dev auth in this mode) |
-| 7 | Deploy the web app with `API_URL` set to your API, sign in, run the 60-second demo (README) | Proposal lands in the inbox; after approval the state becomes `executed` |
-| 8 | Check the sandbox ledger | **Exactly one** refund for that proposal; the audit timeline shows proposed, pending review, approved, executed |
+| 7 | Deploy the web app with `API_URL` set to your API, sign in, run the 60-second walkthrough (README) | Proposal lands in the inbox; after approval the state becomes `executed` |
+| 8 | Check the Pesa Ledger | **Exactly one** refund for that proposal; the audit timeline shows proposed, pending review, approved, executed |
 | 9 | Stop the `worker` task during step 7 (`aws ecs stop-task`), approve, let ECS restart it | Still exactly one refund (durable resume) |
 | 10 | `infra/scripts/teardown.sh` | Stack destroyed; no billable resources remain except cents of state storage |
 
-Known gaps to expect (documented, not bugs): the Pesa Sandbox is a fake payments provider with shared-key auth, it shares
+Known gaps to expect (documented, not bugs): the Pesa Ledger is a payment-provider simulator with shared-key auth, it shares
 the RDS instance, and no tracing backend is provisioned (set `otlp_endpoint` to ship traces).

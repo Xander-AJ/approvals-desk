@@ -28,12 +28,12 @@ variable "api_image" {
 }
 variable "sandbox_image" {
   type        = string
-  description = "ECR image URI for Pesa Sandbox (sandbox/Dockerfile)"
+  description = "ECR image URI for Pesa Ledger (sandbox/Dockerfile)"
 }
 variable "llm_provider" {
   type        = string
   default     = "anthropic"
-  description = "anthropic (real Claude; requires anthropic_api_key) or fake (demo only, rule-based)"
+  description = "anthropic (real Claude; requires anthropic_api_key) or fake (rule-based, no API key)"
   validation {
     condition     = contains(["anthropic", "fake"], var.llm_provider)
     error_message = "llm_provider must be anthropic or fake."

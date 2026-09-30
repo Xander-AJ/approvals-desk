@@ -41,7 +41,7 @@ One backend image, two roles (`backend/scripts/serve.sh`). All services build fr
 
 | Service | Key variables |
 |---|---|
-| `api` | `SERVICE_ROLE=api`, `RUN_MIGRATIONS=1`, `RUN_SEED=1` (demo tenants), `PORT=8000`, `MIGRATION_DATABASE_URL` (owner), `APP_DB_PASSWORD`, `AD_DATABASE_URL` (`app_user`, RLS-bound) |
+| `api` | `SERVICE_ROLE=api`, `RUN_MIGRATIONS=1`, `RUN_SEED=1` (seed tenants), `PORT=8000`, `MIGRATION_DATABASE_URL` (owner), `APP_DB_PASSWORD`, `AD_DATABASE_URL` (`app_user`, RLS-bound) |
 | `worker` | `SERVICE_ROLE=worker` (waits for the migrated schema, then runs arq) |
 | both | `AD_CHECKPOINT_DSN`, `AD_REDIS_URL` (`${{Redis.REDIS_URL}}`), `AD_SANDBOX_URL=http://sandbox.railway.internal:8001`, `AD_SANDBOX_API_KEY`, `AD_JWT_JWKS_URL`, `AD_JWT_ISSUER`, `AD_JWT_AUDIENCE=approvals-api`, `AD_DEV_AUTH=false`, `AD_ASYNC_RESUME=true`, `AD_LLM_PROVIDER=fake`, `AD_CONSOLE_URL` |
 | `sandbox` | `SANDBOX_API_KEY` (same value), `SANDBOX_DATABASE_URL` |
@@ -49,7 +49,7 @@ One backend image, two roles (`backend/scripts/serve.sh`). All services build fr
 Only `api` has a public domain. `sandbox` and `worker` are reachable only on Railway's private network.
 
 ## What this deployment is, and is not
-- **Demo data and a fake payments sandbox.** No real money moves. `AD_LLM_PROVIDER=fake` is a rule-based stand-in: for Claude,
+- **Seed data and a simulated payment provider (Pesa Ledger).** No real money moves; it implements the idempotent provider contract a real PSP adapter would. `AD_LLM_PROVIDER=fake` is a rule-based agent: for Claude,
   set `AD_LLM_PROVIDER=anthropic` plus `ANTHROPIC_API_KEY` (or `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` for a gateway).
 - No tracing backend, no Slack signing secret (buttons disabled until `AD_SLACK_SIGNING_SECRET` is set), no webhook sink.
 - The sandbox shares the app database (own tables) and is protected by a shared key only.
