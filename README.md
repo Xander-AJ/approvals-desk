@@ -110,6 +110,20 @@ rotation, WAF, ALB access logs). HTTPS is mandatory (`certificate_arn` is requir
 and there is one NAT per AZ by default. Known gaps: the Pesa Sandbox is a fake (shared-key auth only) and shares the RDS
 instance; the S3 state backend is declared but you must supply its `-backend-config`.
 
+### First-time AWS setup
+
+No AWS account yet? Create one, then sign in with IAM Identity Center (`aws configure sso && aws sso login`), never root keys.
+After that, one command does the rest:
+
+```bash
+infra/scripts/setup.sh
+```
+
+It checks your tools and credentials, creates the state bucket, lock table and a GitHub OIDC role (CI holds no AWS
+keys; it sets the `AWS_ROLE_ARN` secret for you), writes `backend.hcl` and `terraform.tfvars` (both gitignored),
+pushes the images to ECR, and shows a plan. Nothing billable is created until you type `yes` twice. CI runs
+`terraform fmt`/`validate` on every push.
+
 ## Decisions
 
 `docs/adr/`: checkpointer vs Temporal, RLS vs schema-per-tenant, single-side-effect execute node, outbox and arq,
