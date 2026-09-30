@@ -14,11 +14,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full bg-zinc-50 text-zinc-900">
+    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="min-h-full">
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}` }} />
         <Providers>
-          <Nav />
-          <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">{children}</main>
+          <div className="flex min-h-screen flex-col md:flex-row">
+            <Nav />
+            <main className="min-w-0 flex-1 space-y-4 px-4 py-6 md:px-8">
+              <div className="mx-auto max-w-6xl space-y-4">{children}</div>
+            </main>
+          </div>
         </Providers>
       </body>
     </html>

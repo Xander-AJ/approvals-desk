@@ -1,45 +1,104 @@
 import type { ReactNode } from "react";
 
-const STATE_STYLE: Record<string, string> = {
-  pending_review: "bg-amber-100 text-amber-900",
-  approved: "bg-blue-100 text-blue-900",
-  edited: "bg-blue-100 text-blue-900",
-  executed: "bg-emerald-100 text-emerald-900",
-  rejected: "bg-rose-100 text-rose-900",
-  expired: "bg-zinc-200 text-zinc-700",
-  failed: "bg-rose-200 text-rose-900",
-  compensated: "bg-purple-100 text-purple-900",
-  proposed: "bg-zinc-100 text-zinc-700",
+const STATE_TONE: Record<string, string> = {
+  pending_review: "pending",
+  approved: "info",
+  edited: "info",
+  executed: "ok",
+  rejected: "bad",
+  expired: "idle",
+  failed: "bad",
+  compensated: "comp",
+  proposed: "idle",
 };
 
 export function StateBadge({ state }: { state: string }) {
+  const t = STATE_TONE[state] ?? "idle";
   return (
-    <span data-testid="state-badge" className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLE[state] ?? "bg-zinc-100"}`}>
+    <span
+      data-testid="state-badge"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ color: `var(--s-${t})`, background: `var(--s-${t}-bg)` }}
+    >
+      <span aria-hidden className="size-1.5 rounded-full" style={{ background: `var(--s-${t})` }} />
       {state.replace("_", " ")}
     </span>
   );
 }
 
-export function Card({ title, children }: { title?: string; children: ReactNode }) {
+export function Card({ title, action, children, className = "" }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      {title && <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h2>}
-      {children}
+    <section className={`rounded-lg border border-line bg-surface ${className}`}>
+      {title && (
+        <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">{title}</h2>
+          {action}
+        </header>
+      )}
+      <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+export function PageHeader({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-end gap-x-4 gap-y-2 pb-1">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        {sub && <p className="mt-0.5 max-w-2xl text-sm text-muted">{sub}</p>}
+      </div>
+      {children && <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>}
+    </div>
   );
 }
 
 export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null;
   return (
-    <p role="alert" className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+    <p role="alert" className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--s-bad)", background: "var(--s-bad-bg)", borderColor: "var(--s-bad)" }}>
       {error instanceof Error ? error.message : String(error)}
     </p>
   );
 }
 
-export const btn = "rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40";
-export const btnPrimary = `${btn} bg-zinc-900 text-white hover:bg-zinc-700`;
-export const btnGhost = `${btn} border border-zinc-300 bg-white hover:bg-zinc-50`;
-export const btnDanger = `${btn} bg-rose-600 text-white hover:bg-rose-500`;
-export const input = "rounded-md border border-zinc-300 px-2 py-1.5 text-sm";
+export function Money({ amount, currency, className = "" }: { amount: string | number; currency: string; className?: string }) {
+  return (
+    <span className={`num whitespace-nowrap ${className}`}>
+      <span className="text-muted">{currency}</span> {Number(amount).toLocaleString()}
+    </span>
+  );
+}
+
+/** 0-100 score as a short bar; tone flips at 40 / 70 so a scan of the column finds the risky ones. */
+export function RiskMeter({ score }: { score: number }) {
+  const tone = score >= 70 ? "bad" : score >= 40 ? "pending" : "ok";
+  return (
+    <span className="inline-flex items-center gap-2" title={`Risk ${score} / 100`}>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-sunken">
+        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, score)}%`, background: `var(--s-${tone})` }} />
+      </span>
+      <span className="num text-xs text-muted">{score}</span>
+    </span>
+  );
+}
+
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div aria-hidden className={`skeleton ${className}`} />;
+}
+
+export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="px-4 py-10 text-center">
+      <p className="font-medium">{title}</p>
+      {hint && <p className="mt-1 text-sm text-muted">{hint}</p>}
+    </div>
+  );
+}
+
+export const btn =
+  "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors active:translate-y-px disabled:pointer-events-none disabled:opacity-40";
+export const btnPrimary = `${btn} bg-accent text-accent-ink hover:opacity-90`;
+export const btnGhost = `${btn} border border-line bg-surface hover:bg-sunken`;
+export const btnDanger = `${btn} border border-danger/40 bg-surface text-danger hover:bg-sunken`;
+export const input =
+  "rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm placeholder:text-muted disabled:bg-sunken disabled:text-muted";

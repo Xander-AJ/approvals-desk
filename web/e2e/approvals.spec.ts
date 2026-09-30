@@ -62,7 +62,7 @@ test("reviewer edits the amount: diff shown and the EDITED amount is what execut
   await page.getByLabel("New amount").fill("900");
   await page.getByRole("button", { name: /Save/ }).click();
   await expect(page.getByTestId("state-badge")).toHaveText("executed");
-  const diff = page.getByText("Reviewer edit").locator("..");
+  const diff = page.locator("section", { hasText: "Reviewer edit" });
   await expect(diff.locator("s")).toHaveText("1200.00");
   await expect(diff.locator("b")).toHaveText("900.00");
   const ledger = await (await page.request.get(`${SANDBOX}/ledger`, { headers: SANDBOX_HEADERS })).json();

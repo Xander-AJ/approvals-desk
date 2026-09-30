@@ -37,13 +37,13 @@ export default function IntegrationsPage() {
     onSuccess: refresh,
   });
 
-  if (session && !isAdmin) return <p className="text-sm text-zinc-500">Only admins can manage integrations.</p>;
+  if (session && !isAdmin) return <p className="text-sm text-muted">Only admins can manage integrations.</p>;
   const d = q.data;
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Slack approvals</h1>
-      <p className="text-sm text-zinc-500">
+      <h1 className="text-xl font-semibold tracking-tight">Slack approvals</h1>
+      <p className="text-sm text-muted">
         New proposals are posted to Slack with Approve / Reject buttons. Clicks are verified with Slack&apos;s signature and only
         Slack users mapped below can decide, so channel membership alone grants nothing.
       </p>
@@ -52,9 +52,9 @@ export default function IntegrationsPage() {
       <Card title="Incoming webhook">
         <div className="mb-3 text-sm">
           {d?.slack.configured ? (
-            <span>Connected <code className="rounded bg-zinc-100 px-1">{d.slack.webhook_hint}</code>{d.slack.channel_label ? ` · ${d.slack.channel_label}` : ""}</span>
+            <span>Connected <code className="rounded bg-sunken px-1">{d.slack.webhook_hint}</code>{d.slack.channel_label ? ` · ${d.slack.channel_label}` : ""}</span>
           ) : (
-            <span className="text-zinc-500">Not connected.</span>
+            <span className="text-muted">Not connected.</span>
           )}
         </div>
         <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
@@ -71,11 +71,11 @@ export default function IntegrationsPage() {
         </form>
         <div className="mt-2 space-y-1">
           <ErrorNote error={save.error ?? test.error ?? remove.error} />
-          {test.isSuccess && <p className="text-sm text-emerald-700">Test message sent.</p>}
-          {save.isSuccess && <p className="text-sm text-emerald-700">Saved.</p>}
+          {test.isSuccess && <p className="text-sm text-[color:var(--s-ok)]">Test message sent.</p>}
+          {save.isSuccess && <p className="text-sm text-[color:var(--s-ok)]">Saved.</p>}
         </div>
         {d && !d.slack.interactions_enabled && (
-          <p role="status" className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p role="status" className="mt-3 rounded-md border border-[color:var(--s-pending)] bg-[color:var(--s-pending-bg)] px-3 py-2 text-sm text-[color:var(--s-pending)]">
             Buttons will not work yet: the server has no Slack signing secret (<code>AD_SLACK_SIGNING_SECRET</code>). Messages
             will still be posted with an &quot;Open / edit&quot; link.
           </p>
@@ -84,10 +84,10 @@ export default function IntegrationsPage() {
 
       <Card title="Who can decide from Slack">
         <table className="mb-3 w-full text-left text-sm">
-          <thead className="text-xs uppercase text-zinc-500"><tr><th>Slack user ID</th><th>Name</th><th>Role</th><th /></tr></thead>
+          <thead className="text-xs uppercase text-muted"><tr><th>Slack user ID</th><th>Name</th><th>Role</th><th /></tr></thead>
           <tbody>
             {d?.identities.map((i) => (
-              <tr key={i.id} className="border-t border-zinc-100">
+              <tr key={i.id} className="border-t border-line">
                 <td className="py-2 font-mono text-xs">{i.slack_user_id}</td>
                 <td>{i.label}</td>
                 <td>{i.role}</td>
@@ -96,7 +96,7 @@ export default function IntegrationsPage() {
                 </td>
               </tr>
             ))}
-            {d && d.identities.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-zinc-500">No Slack users mapped: nobody can decide from Slack.</td></tr>}
+            {d && d.identities.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-muted">No Slack users mapped: nobody can decide from Slack.</td></tr>}
           </tbody>
         </table>
         <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); addIdentity.mutate(); }}>

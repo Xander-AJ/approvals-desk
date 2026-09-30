@@ -1,26 +1,86 @@
 @import "tailwindcss";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, :root:not([data-theme="light"]) *) );
 
+/* Ledger palette: cool paper, ink, one deep-green accent. State colours carry meaning; nothing else is coloured. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --sunken: #eceee9;
+  --line: #dcdfd8;
+  --ink: #12161c;
+  --muted: #5d6570;
+  --accent: #0f6b4b;
+  --accent-ink: #ffffff;
+  --danger: #b42318;
+  --s-pending: #a15c00;
+  --s-pending-bg: #fdf1d8;
+  --s-ok: #0f6b4b;
+  --s-ok-bg: #dcf1e6;
+  --s-info: #1d4ed8;
+  --s-info-bg: #e3ebfd;
+  --s-bad: #b42318;
+  --s-bad-bg: #fde4e1;
+  --s-idle: #57606a;
+  --s-idle-bg: #e6e8e3;
+  --s-comp: #6d28d9;
+  --s-comp-bg: #ece4fb;
+}
+:root[data-theme="dark"] {
+  --bg: #0d1013;
+  --surface: #151a1e;
+  --sunken: #1b2126;
+  --line: #262d33;
+  --ink: #e8ebe8;
+  --muted: #929ba5;
+  --accent: #3ec996;
+  --accent-ink: #06231a;
+  --danger: #ff8a7d;
+  --s-pending: #f2b45a;
+  --s-pending-bg: #33260f;
+  --s-ok: #4fd6a2;
+  --s-ok-bg: #0f2f24;
+  --s-info: #8fb0ff;
+  --s-info-bg: #16244a;
+  --s-bad: #ff8a7d;
+  --s-bad-bg: #3a1613;
+  --s-idle: #a3acb5;
+  --s-idle-bg: #232a30;
+  --s-comp: #c4a5ff;
+  --s-comp-bg: #2b1f47;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1013; --surface: #151a1e; --sunken: #1b2126; --line: #262d33; --ink: #e8ebe8; --muted: #929ba5;
+    --accent: #3ec996; --accent-ink: #06231a; --danger: #ff8a7d;
+    --s-pending: #f2b45a; --s-pending-bg: #33260f; --s-ok: #4fd6a2; --s-ok-bg: #0f2f24;
+    --s-info: #8fb0ff; --s-info-bg: #16244a; --s-bad: #ff8a7d; --s-bad-bg: #3a1613;
+    --s-idle: #a3acb5; --s-idle-bg: #232a30; --s-comp: #c4a5ff; --s-comp-bg: #2b1f47;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
 }
+.num { font-family: var(--font-geist-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@keyframes shimmer { from { opacity: 0.5 } to { opacity: 1 } }
+.skeleton { background: var(--sunken); border-radius: 6px; animation: shimmer 0.9s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } * { transition: none !important; } }

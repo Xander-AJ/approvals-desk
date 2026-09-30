@@ -5,7 +5,7 @@ import { z } from "zod";
 import { api } from "@/lib/api";
 import { Policy } from "@/lib/schemas";
 import { useRequireSession } from "@/lib/useSession";
-import { btnPrimary, Card, ErrorNote, input } from "@/components/ui";
+import { btnPrimary, Card, ErrorNote, input, PageHeader } from "@/components/ui";
 
 const ACTIONS = ["refund", "reversal", "fee_waiver"];
 
@@ -28,11 +28,11 @@ export default function PolicyPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Tenant policy</h1>
-      {!isAdmin && <p className="text-sm text-zinc-500">Read-only: only admins can change thresholds.</p>}
-      <Card>
+      <PageHeader title="Tenant policy" sub="Thresholds the agent is checked against before anything is auto-approved or sent for review." />
+      {!isAdmin && <p className="text-sm text-muted">Read-only: only admins can change thresholds.</p>}
+      <Card className="max-w-xl">
         <form
-          className="grid max-w-md gap-3 text-sm"
+          className="grid gap-4 text-sm [&_label]:font-medium"
           onSubmit={(e) => { e.preventDefault(); save.mutate(form); }}
         >
           <label>Auto-approve up to (KES)
@@ -60,7 +60,7 @@ export default function PolicyPage() {
             </div>
           </fieldset>
           <ErrorNote error={save.error} />
-          {save.isSuccess && <p className="text-emerald-700">Saved.</p>}
+          {save.isSuccess && <p className="text-[color:var(--s-ok)]">Saved.</p>}
           {isAdmin && <button className={btnPrimary} disabled={save.isPending}>Save policy</button>}
         </form>
       </Card>

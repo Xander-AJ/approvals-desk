@@ -10,7 +10,8 @@ import { btnGhost, btnPrimary, Card, ErrorNote, input } from "@/components/ui";
 
 export default function LoginPage() {
   return (
-    <div className="mx-auto max-w-sm">
+    <div className="mx-auto max-w-sm pt-[10vh]">
+      <div className="mb-6"><h1 className="text-2xl font-semibold tracking-tight">approvals-desk</h1><p className="mt-1 text-sm text-muted">Review and approve the money movements your support agent proposes.</p></div>
       <Suspense fallback={null}>{AUTH_MODE === "dev" ? <DevLogin /> : <OidcLogin />}</Suspense>
     </div>
   );
@@ -64,7 +65,7 @@ function OidcLogin() {
   return (
     <Card title="Sign in">
       {denied && (
-        <p role="alert" className="mb-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="mb-3 rounded-md border border-danger/40 bg-[color:var(--s-bad-bg)] px-3 py-2 text-sm text-danger">
           {denied === "AccessDenied"
             ? "That GitHub account is not authorized for this console. Ask an admin to add it."
             : "Sign-in failed. Please try again."}
@@ -78,7 +79,7 @@ function OidcLogin() {
       )}
       {me.data && (
         <div className="space-y-2">
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-muted">
             Signed in as <b>{me.data.name ?? me.data.user}</b>. Choose how to act:
           </p>
           {me.data.memberships.map((m) => (

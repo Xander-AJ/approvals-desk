@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Metrics } from "@/lib/schemas";
 import { useRequireSession } from "@/lib/useSession";
-import { Card, ErrorNote } from "@/components/ui";
+import { Card, ErrorNote, PageHeader, Skeleton } from "@/components/ui";
 
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
 function fmtLatency(s: number | null) {
@@ -25,19 +25,41 @@ export default function MetricsPage() {
         { label: "Avg approval latency", value: fmtLatency(m.avg_approval_latency_s), hint: "proposal → human decision" },
       ]
     : [];
+  const bars = m
+    ? [
+        { label: "Auto-approved", v: m.auto_approve_rate, tone: "ok" },
+        { label: "Overridden by a human", v: m.override_rate, tone: "pending" },
+      ]
+    : [];
   return (
     <>
-      <h1 className="text-xl font-semibold">Metrics</h1>
+      <PageHeader title="Metrics" sub="How much of the queue the agent clears alone, and how often people change its mind." />
       <ErrorNote error={q.error} />
+      {!m && !q.error && <Skeleton className="h-28 w-full" />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((t) => (
           <Card key={t.label}>
-            <div className="text-sm text-zinc-500">{t.label}</div>
-            <div className="mt-1 text-3xl font-semibold">{t.value}</div>
-            <div className="mt-1 text-xs text-zinc-400">{t.hint}</div>
+            <div className="text-sm text-muted">{t.label}</div>
+            <div className="num mt-1 text-3xl font-semibold">{t.value}</div>
+            <div className="mt-1 text-xs text-muted">{t.hint}</div>
           </Card>
         ))}
       </div>
+      {m && (
+        <Card title="Share of proposals">
+          <ul className="space-y-3">
+            {bars.map((b) => (
+              <li key={b.label} className="grid grid-cols-[180px_1fr_48px] items-center gap-3 text-sm">
+                <span>{b.label}</span>
+                <span className="h-2 overflow-hidden rounded-full bg-sunken">
+                  <span className="block h-full rounded-full" style={{ width: pct(b.v), background: `var(--s-${b.tone})` }} />
+                </span>
+                <span className="num text-right">{pct(b.v)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </>
   );
 }
