@@ -10,3 +10,4 @@ Direction: dense ops console, "ledger" palette (cool paper, ink, one deep-green 
 - Dark mode follows the OS, with a manual override stored in `localStorage` (`data-theme`).
 - e2e depends on: `data-testid="state-badge"`, button names (Approve, Edit amount, Reject, ...), and `ol` for the
   audit timeline. Change them together with `e2e/approvals.spec.ts`.
+
