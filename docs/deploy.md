@@ -56,3 +56,10 @@ Only `api` has a public domain. `sandbox` and `worker` are reachable only on Rai
 - Redis and Postgres use Railway's private network without TLS.
 - Secrets live in each platform's variable store. Nothing sensitive is in git (history scanned before the first push).
 - The AWS/Terraform path in `infra/` remains valid and unapplied; this Railway setup is the one that has actually been run.
+
+## PR previews
+
+The `preview` job in `.github/workflows/ci.yml` deploys the web app to a Vercel preview for each pull request and
+comments the URL. Add repository secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` (from
+`vercel link` in `web/`, see `.vercel/project.json`); without them the job skips. Previews use the Railway API
+configured in the Vercel project's Preview environment variables.
