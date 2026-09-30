@@ -271,9 +271,31 @@ def create_app(settings: Settings, rt: Runtime, queue: Any = None, http: httpx.A
                 & (Proposal.expires_at.is_not(None))))).scalar_one()
             lat: Any = (await s.execute(select(func.avg(func.extract("epoch", Proposal.decided_at - Proposal.created_at)))
                                    .where(Proposal.decided_at.is_not(None), ~Proposal.auto_approved))).scalar_one()
+            mix_rows = (await s.execute(select(Proposal.auto_approved, Proposal.original.is_not(None), Proposal.state,
+                                               func.count()).group_by(Proposal.auto_approved, Proposal.original.is_not(None),
+                                                                      Proposal.state))).all()
+            day = func.date_trunc("day", Proposal.created_at)
+            series = (await s.execute(
+                select(day, func.avg(func.extract("epoch", Proposal.decided_at - Proposal.created_at)))
+                .where(Proposal.decided_at.is_not(None), ~Proposal.auto_approved)
+                .group_by(day).order_by(day.desc()).limit(14))).all()
+        decisions = {"auto_approved": 0, "approved": 0, "edited": 0, "rejected": 0, "expired": 0}
+        for is_auto, was_edited, state, n in mix_rows:
+            if is_auto:
+                decisions["auto_approved"] += n
+            elif was_edited:
+                decisions["edited"] += n
+            elif state == "rejected":
+                decisions["rejected"] += n
+            elif state == "expired":
+                decisions["expired"] += n
+            elif state in ("approved", "executed", "failed", "compensated"):
+                decisions["approved"] += n
         return {"total": total, "auto_approve_rate": auto / total if total else 0.0,
                 "override_rate": overridden / human if human else 0.0,
-                "avg_approval_latency_s": float(lat) if lat is not None else None}
+                "avg_approval_latency_s": float(lat) if lat is not None else None,
+                "decisions": decisions,
+                "latency_by_day": [{"day": d.date().isoformat(), "avg_s": float(v)} for d, v in reversed(series)]}
 
     # ------------------------------------------------------------------ Slack integration
     @app.get("/integrations")

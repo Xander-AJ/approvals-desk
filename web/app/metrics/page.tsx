@@ -25,12 +25,16 @@ export default function MetricsPage() {
         { label: "Avg approval latency", value: fmtLatency(m.avg_approval_latency_s), hint: "proposal → human decision" },
       ]
     : [];
-  const bars = m
-    ? [
-        { label: "Auto-approved", v: m.auto_approve_rate, tone: "ok" },
-        { label: "Overridden by a human", v: m.override_rate, tone: "pending" },
-      ]
-    : [];
+  const MIX = [
+    { key: "auto_approved", label: "Auto-approved", color: "var(--s-ok)" },
+    { key: "approved", label: "Approved", color: "var(--s-info)" },
+    { key: "edited", label: "Edited", color: "var(--s-pending)" },
+    { key: "rejected", label: "Rejected", color: "var(--s-bad)" },
+    { key: "expired", label: "Expired", color: "var(--s-idle)" },
+  ] as const;
+  const mixTotal = m ? MIX.reduce((n, x) => n + m.decisions[x.key], 0) : 0;
+  const days = m?.latency_by_day ?? [];
+  const maxLat = Math.max(1, ...days.map((d) => d.avg_s));
   return (
     <>
       <PageHeader title="Metrics" sub="How much of the queue the agent clears alone, and how often people change its mind." />
@@ -46,19 +50,46 @@ export default function MetricsPage() {
         ))}
       </div>
       {m && (
-        <Card title="Share of proposals">
-          <ul className="space-y-3">
-            {bars.map((b) => (
-              <li key={b.label} className="grid grid-cols-[180px_1fr_48px] items-center gap-3 text-sm">
-                <span>{b.label}</span>
-                <span className="h-2 overflow-hidden rounded-full bg-sunken">
-                  <span className="block h-full rounded-full" style={{ width: pct(b.v), background: `var(--s-${b.tone})` }} />
-                </span>
-                <span className="num text-right">{pct(b.v)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card title="Decision mix">
+            {mixTotal === 0 ? (
+              <p className="text-sm text-muted">No decided proposals yet.</p>
+            ) : (
+              <>
+                <div role="img" aria-label={MIX.map((x) => `${x.label} ${m.decisions[x.key]}`).join(", ")} className="flex h-3 overflow-hidden rounded-full bg-sunken">
+                  {MIX.map((x) => m.decisions[x.key] > 0 && <span key={x.key} style={{ width: pct(m.decisions[x.key] / mixTotal), background: x.color }} />)}
+                </div>
+                <ul className="mt-4 space-y-2 text-sm">
+                  {MIX.map((x) => (
+                    <li key={x.key} className="flex items-center gap-2">
+                      <span aria-hidden className="size-2 rounded-full" style={{ background: x.color }} />
+                      <span>{x.label}</span>
+                      <span className="num ml-auto">{m.decisions[x.key]}</span>
+                      <span className="num w-10 text-right text-muted">{pct(m.decisions[x.key] / mixTotal)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Card>
+          <Card title="Human decision latency by day">
+            {days.length === 0 ? (
+              <p className="text-sm text-muted">No human decisions yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {days.map((d) => (
+                  <li key={d.day} className="grid grid-cols-[64px_1fr_72px] items-center gap-3 text-sm">
+                    <span className="num text-muted">{d.day.slice(5)}</span>
+                    <span className="h-2 overflow-hidden rounded-full bg-sunken">
+                      <span className="block h-full rounded-full bg-accent" style={{ width: `${(d.avg_s / maxLat) * 100}%` }} />
+                    </span>
+                    <span className="num text-right">{fmtLatency(d.avg_s)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
       )}
     </>
   );

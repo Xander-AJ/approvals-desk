@@ -152,6 +152,8 @@ async def test_metrics_reflect_edit_reject_and_latency(world) -> None:  # type: 
     m = (await api.get("/metrics", headers=h("reviewer"))).json()
     assert m["total"] >= 2 and 0 < m["override_rate"] <= 1
     assert m["avg_approval_latency_s"] is not None and m["avg_approval_latency_s"] >= 0
+    assert m["decisions"]["edited"] >= 1 and m["decisions"]["rejected"] >= 1
+    assert m["latency_by_day"] and m["latency_by_day"][-1]["avg_s"] >= 0
 
 
 async def test_agent_failure_escalates_to_a_human_instead_of_a_500(world) -> None:  # type: ignore[no-untyped-def]

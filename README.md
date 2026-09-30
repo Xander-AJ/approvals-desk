@@ -20,6 +20,12 @@ customer msg ─▶ API ─▶ LangGraph run ─ classify ─▶ retrieve ctx �
                  compose reply        every transition ─▶ audit_events (append-only) + outbox ─▶ signed webhooks
 ```
 
+## The console
+
+![Approval inbox](docs/screenshots/inbox.png)
+![Proposal detail with audit timeline](docs/screenshots/proposal.png)
+![Metrics](docs/screenshots/metrics.png)
+
 ## Run it
 
 ```bash
@@ -70,7 +76,7 @@ Replay semantics (what re-runs on resume) are documented in `docs/adr/0001` and 
 ## Tests, evals, CI
 
 ```bash
-cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 150 tests, testcontainers
+cd backend && uv run ruff check app tests evals && uv run mypy --strict app && uv run pytest -q   # 153 tests, testcontainers
 cd backend && uv run python -m evals.run --provider anthropic --model anthropic/claude-haiku-4.5 --mode replay
 cd sandbox && uv run pytest -q
 cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the compose stack up + seeded

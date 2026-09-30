@@ -48,6 +48,8 @@ export const Metrics = z.object({
   auto_approve_rate: z.number(),
   override_rate: z.number(),
   avg_approval_latency_s: z.number().nullable(),
+  decisions: z.object({ auto_approved: z.number(), approved: z.number(), edited: z.number(), rejected: z.number(), expired: z.number() }),
+  latency_by_day: z.array(z.object({ day: z.string(), avg_s: z.number() })),
 });
 
 export const Policy = z.object({
