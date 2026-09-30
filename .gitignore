@@ -15,3 +15,9 @@ web/playwright-report/
 *.tfstate
 *.tfstate.*
 .terraform/
+
+# terraform local files
+infra/terraform.tfvars
+infra/backend.hcl
+infra/tfplan
+infra/bootstrap/tfplan

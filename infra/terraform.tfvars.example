@@ -1,0 +1,14 @@
+# Copied to terraform.tfvars by scripts/setup.sh (gitignored). Only the first block is required.
+region          = "eu-west-1"
+console_url     = "https://approvals-desk.vercel.app"
+jwt_issuer      = "https://approvals-desk.vercel.app"
+jwt_jwks_url    = "https://approvals-desk.vercel.app/jwks.json"
+certificate_arn = "arn:aws:acm:eu-west-1:123456789012:certificate/REPLACE_ME" # ACM cert for your API domain (HTTPS is mandatory)
+
+# Filled in by scripts/setup.sh after images are pushed:
+api_image     = ""
+sandbox_image = ""
+
+# Optional
+# anthropic_api_key    = "" # or export TF_VAR_anthropic_api_key
+# slack_signing_secret = ""
