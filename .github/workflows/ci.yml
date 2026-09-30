@@ -102,6 +102,7 @@ jobs:
         uses: actions/setup-node@v4
         with: { node-version: 22 }
       - if: steps.gate.outputs.run == 'true'
+        working-directory: web   # the Vercel project is linked from web/, not the repo root
         run: |
           npm i -g vercel@latest
           vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
