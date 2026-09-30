@@ -97,7 +97,7 @@ export default function InboxPage() {
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_280px] lg:items-start">
+      <div className={`grid gap-4 lg:items-start ${(escalated.data?.length ?? 0) > 0 ? "lg:grid-cols-[1fr_280px]" : ""}`}>
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-line bg-sunken/60 text-xs uppercase tracking-wider text-muted">
