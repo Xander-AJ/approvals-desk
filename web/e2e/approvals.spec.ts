@@ -132,7 +132,7 @@ test("admin changes the review SLA and it persists; invalid input is rejected by
 
   await page.getByLabel("Auto-approve up to (KES)").fill("-5"); // API rejects negatives
   await page.getByRole("button", { name: "Save policy" }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.locator("p[role=alert]")).toBeVisible();
 
   await page.reload(); // restore for other tests / reruns
   await page.getByLabel("Review SLA (minutes)").fill("60");
