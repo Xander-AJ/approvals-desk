@@ -92,6 +92,11 @@ cd web && npx tsc --noEmit && npx eslint . && npx playwright test   # needs the 
   the compose stack, Docker builds, Trivy (HIGH/CRITICAL). All six jobs pass on GitHub-hosted runners (the first run
   caught a nonexistent Trivy action tag and, earlier, a `tsc` failure that only appeared on a clean checkout).
 
+## Pull request previews
+
+Every PR gets a Vercel preview of the web app, posted as a comment (Vercel login required by default). Setup and
+secrets: [`docs/deploy.md`](docs/deploy.md#pr-previews).
+
 ## Live deployment
 
 Web on Vercel (`https://approvals-desk.vercel.app`) with GitHub sign-in restricted to an allowlist; backend on Railway
@@ -110,6 +115,8 @@ rotation, WAF, ALB access logs). HTTPS is mandatory (`certificate_arn` is requir
 and there is one NAT per AZ by default. Known gaps: the Pesa Sandbox is a fake (shared-key auth only) and shares the RDS
 instance; the S3 state backend is declared but you must supply its `-backend-config`.
 
+See [`infra/README.md`](infra/README.md) for costs, the GitHub Actions path (`aws-deploy`), and teardown.
+
 ### First-time AWS setup
 
 No AWS account yet? Create one, then sign in with IAM Identity Center (`aws configure sso && aws sso login`), never root keys.
@@ -122,7 +129,8 @@ infra/scripts/setup.sh
 It checks your tools and credentials, creates the state bucket, lock table and a GitHub OIDC role (CI holds no AWS
 keys; it sets the `AWS_ROLE_ARN` secret for you), writes `backend.hcl` and `terraform.tfvars` (both gitignored),
 pushes the images to ECR, and shows a plan. Nothing billable is created until you type `yes` twice. CI runs
-`terraform fmt`/`validate` on every push.
+`terraform fmt`/`validate` on every push. The stack is still unapplied; the `aws-deploy` workflow and
+`teardown.sh` are likewise untested against a real account.
 
 ## Decisions
 
