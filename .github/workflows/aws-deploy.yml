@@ -22,10 +22,13 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.9.8 }
       - name: Write tfvars and backend config
+        env:  # via env, never interpolated into the script: a variable containing a quote must not become code
+          TFVARS: ${{ vars.TFVARS }}
+          REGION: ${{ vars.AWS_REGION }}
         run: |
-          printf '%s\n' '${{ vars.TFVARS }}' > terraform.tfvars
+          printf '%s\n' "$TFVARS" > terraform.tfvars
           BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name,'approvals-desk-tfstate-')].Name | [0]" --output text)
-          printf 'bucket = "%s"\nkey = "approvals-desk/terraform.tfstate"\nregion = "%s"\ndynamodb_table = "approvals-desk-tflock"\nencrypt = true\n' "$BUCKET" "${{ vars.AWS_REGION }}" > backend.hcl
+          printf 'bucket = "%s"\nkey = "approvals-desk/terraform.tfstate"\nregion = "%s"\ndynamodb_table = "approvals-desk-tflock"\nencrypt = true\n' "$BUCKET" "$REGION" > backend.hcl
       - run: terraform init -input=false -backend-config=backend.hcl
       - name: Create ECR, build and push images
         if: inputs.action == 'apply'
